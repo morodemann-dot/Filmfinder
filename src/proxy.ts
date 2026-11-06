@@ -41,6 +41,21 @@ export async function proxy(request: NextRequest) {
     ]);
   }
 
+  // Schlüssel dürfen nur "normale" Zeichen enthalten (keine Pfeile, Leerzeichen, Anführungszeichen).
+  const keyProblems: string[] = [];
+  const checkKey = (name: string, prefixes: string[], hint: string) => {
+    const v = process.env[name]!.trim();
+    if (!/^[A-Za-z0-9_.\-]+$/.test(v)) {
+      keyProblems.push(`<code>${name}</code> enthält unerlaubte Zeichen (z. B. Leerzeichen, Pfeile „→“ oder Anführungszeichen). Bitte nur den reinen Schlüssel einfügen. ${hint}`);
+    } else if (!prefixes.some((p) => v.startsWith(p))) {
+      keyProblems.push(`<code>${name}</code> hat den falschen Anfang. ${hint}`);
+    }
+  };
+  checkKey("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", ["sb_publishable_", "eyJ"], "Er beginnt mit <code>sb_publishable_</code>.");
+  checkKey("SUPABASE_SECRET_KEY", ["sb_secret_", "eyJ"], "Er beginnt mit <code>sb_secret_</code>.");
+  checkKey("TMDB_READ_TOKEN", ["eyJ"], "Gemeint ist der lange „API Read Access Token“ von TMDB, er beginnt mit <code>eyJ</code>.");
+  if (keyProblems.length) return setupError(keyProblems);
+
   let response = NextResponse.next({ request });
 
   try {
