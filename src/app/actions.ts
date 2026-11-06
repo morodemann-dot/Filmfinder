@@ -45,7 +45,7 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
     return {
       error: error.message.includes("already")
         ? "Für diese E-Mail gibt es schon ein Konto."
-        : "Konto konnte nicht angelegt werden.",
+        : `Konto konnte nicht angelegt werden. Meldung von Supabase: ${error.message}`,
     };
   }
   const supabase = await createClient();
