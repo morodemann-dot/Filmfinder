@@ -103,6 +103,8 @@ type Details = {
   created_by?: { name: string }[];
   belongs_to_collection?: { id: number; name: string } | null;
   imdb_id?: string | null;
+  vote_average?: number;
+  vote_count?: number;
 };
 
 const SERIES_STATUS: Record<string, string> = {
@@ -156,6 +158,8 @@ export async function fetchTitleRow(type: MediaType, id: number) {
     overview: d.overview || null,
     poster_path: d.poster_path ?? null,
     popularity: d.popularity ?? null,
+    vote_average: d.vote_average ?? null,
+    vote_count: d.vote_count ?? null,
     directors:
       type === "movie"
         ? [...new Set((d.credits?.crew ?? []).filter((c) => c.job === "Director").map((c) => c.name))]

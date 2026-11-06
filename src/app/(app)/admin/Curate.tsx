@@ -11,12 +11,12 @@ import {
   type CurationCard,
   type CurationFilter,
 } from "@/app/actions";
-import { awardDe, formatRuntime } from "@/lib/types";
+import { awardDe, formatRuntime, formatVotes } from "@/lib/types";
 
 // Aussortieren im Tinder-Stil: rechts = behalten, links = entfernen.
 
 const DECADES = [1980, 1990, 2000, 2010, 2020];
-const ORDERS = { unbekannt: "Unbekannteste zuerst", zufall: "Zufällig", neu: "Zuletzt hinzugefügt" } as const;
+const ORDERS = { unbekannt: "Unbekannteste zuerst", schwach: "Schwächste zuerst", zufall: "Zufällig", neu: "Zuletzt hinzugefügt" } as const;
 const THRESHOLD = 90; // so weit (in Pixeln) muss man wischen
 
 type Done = { card: CurationCard; action: "keep" | "remove" };
@@ -303,7 +303,10 @@ function CardFace({ card }: { card: CurationCard }) {
           {[card.media_type === "tv" ? "Serie" : null, card.release_year, formatRuntime(card.runtime_seconds), card.genres.slice(0, 3).join(", ")]
             .filter(Boolean).join(" · ")}
         </div>
-        {(card.directors?.length ?? 0) > 0 && <div className="small" style={{ marginTop: 6 }}><span className="muted">Regie:</span> {card.directors!.join(", ")}</div>}
+        {formatVotes(card.vote_average, card.vote_count) && (
+          <div className="small" style={{ marginTop: 6 }}><span className="muted">TMDB:</span> {formatVotes(card.vote_average, card.vote_count)}</div>
+        )}
+        {(card.directors?.length ?? 0) > 0 && <div className="small"><span className="muted">Regie:</span> {card.directors!.join(", ")}</div>}
         {(card.cast_names?.length ?? 0) > 0 && <div className="small"><span className="muted">Mit:</span> {card.cast_names!.slice(0, 3).join(", ")}</div>}
         {(card.oscars?.length ?? 0) > 0 && <div className="small" style={{ marginTop: 4 }}>🏆 {card.oscars!.slice(0, 2).map(awardDe).join(", ")}{card.oscars!.length > 2 ? " …" : ""}</div>}
         {card.overview && <p className="swipe-overview">{card.overview}</p>}

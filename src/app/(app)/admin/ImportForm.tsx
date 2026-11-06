@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import RefreshButton from "@/components/RefreshButton";
 import {
   completeCollections,
   importActor,
@@ -8,7 +9,6 @@ import {
   importFranchise,
   importAwardsChunk,
   importHollywood,
-  refreshOldMovies,
   type AwardsChunkResult,
   type FormState,
 } from "@/app/actions";
@@ -131,18 +131,16 @@ export function FranchiseForm() {
 // Wartung: Reihen vervollständigen und alte Einträge auffrischen
 export function MaintenanceForms() {
   const [cState, cAction, cPending] = useActionState<FormState>(completeCollections, {});
-  const [rState, rAction, rPending] = useActionState<FormState>(refreshOldMovies, {});
   return (
     <div className="panel">
       <h2 style={{ marginTop: 0 }}>Katalog pflegen</h2>
-      <form action={rAction} style={{ marginBottom: 18 }}>
+      <div style={{ marginBottom: 18 }}>
         <p className="muted small" style={{ marginTop: 0 }}>
-          <strong>1. Ältere Filme auffrischen:</strong> lädt Regie, Studios und Filmreihe für Filme nach,
-          die vor dieser Funktion importiert wurden. Netflix-Filme werden dabei entfernt.
+          <strong>1. Fehlende Daten laden:</strong> holt Regie, Studios, Filmreihe, Besetzung und TMDB-Bewertung
+          für alle Filme nach, bei denen etwas fehlt. Läuft automatisch in Etappen.
         </p>
-        <button className="btn" disabled={rPending}>{rPending ? "Frische auf …" : "Ältere Filme auffrischen"}</button>
-        <Status state={rState} />
-      </form>
+        <RefreshButton missing={0} label="Fehlende Daten laden" />
+      </div>
       <form action={cAction}>
         <p className="muted small" style={{ marginTop: 0 }}>
           <strong>2. Filmreihen vervollständigen:</strong> Ist ein Teil einer Reihe im Katalog (z. B. Sicario),

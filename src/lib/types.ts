@@ -16,6 +16,8 @@ export type Title = {
   overview: string | null;
   poster_path: string | null;
   popularity: number | null;
+  vote_average?: number | null;
+  vote_count?: number | null;
   directors: string[] | null;
   studios: string[] | null;
   collection_id: number | null;
@@ -90,4 +92,10 @@ const AWARD_DE: [RegExp, string][] = [
 ];
 export function awardDe(name: string) {
   return AWARD_DE.find(([re]) => re.test(name))?.[1] ?? name;
+}
+
+// TMDB-Bewertung lesbar machen, z. B. "7,8 · 24.300 Stimmen"
+export function formatVotes(avg: number | null | undefined, count: number | null | undefined) {
+  if (avg == null || count == null) return null;
+  return `${avg.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} · ${count.toLocaleString("de-DE")} Stimmen`;
 }

@@ -3,7 +3,7 @@ import Poster from "@/components/Poster";
 import TitleCard from "@/components/TitleCard";
 import FeedbackControls from "@/components/FeedbackControls";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { awardDe, formatRuntime, type Status, type Title } from "@/lib/types";
+import { awardDe, formatRuntime, formatVotes, type Status, type Title } from "@/lib/types";
 
 // Detailseite eines Films oder einer Serie.
 export default async function TitlePage({ params }: { params: Promise<{ id: string }> }) {
@@ -44,6 +44,7 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
     title.episodes != null && `${title.episodes} Folgen`,
     title.series_status && title.series_status !== "unbekannt" && title.series_status,
     title.original_language?.toUpperCase(),
+    formatVotes(title.vote_average, title.vote_count) && `TMDB ${formatVotes(title.vote_average, title.vote_count)}`,
     title.countries.length > 0 && title.countries.join(", "),
   ].filter(Boolean);
 

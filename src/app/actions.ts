@@ -375,35 +375,66 @@ export async function importFranchise(_: FormState, formData: FormData): Promise
   }
 }
 
-// Ältere Einträge (ohne Regie/Studio/Reihe) neu von TMDB laden. Netflix-Filme werden dabei entfernt.
-export async function refreshOldMovies(): Promise<FormState> {
+// Filme neu von TMDB laden, denen Daten fehlen (Regie, Studios, Reihe, Qualitätsdaten …).
+// Arbeitet in Etappen à 60 Filme; die Seite ruft so lange auf, bis nichts mehr fehlt.
+export async function refreshChunk(): Promise<{ done: number; remaining: number }> {
   const user = await getUser();
-  if (!isAdmin(user?.email)) return { error: "Nur für Admins." };
+  if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
   const admin = createAdminClient();
+  const { data, error, count } = await admin
+    .from("titles").select("id,tmdb_id,media_type", { count: "exact" }).is("vote_count", null).limit(60);
+  if (error) throw new Error(error.message + " (wurde die Ergänzung 9 im SQL Editor ausgeführt?)");
+  if (!data?.length) return { done: 0, remaining: 0 };
 
-  const { data, error } = await admin
-    .from("titles").select("id,tmdb_id").eq("media_type", "movie").filter("studios", "eq", "{}").limit(60);
-  if (error) return { error: "Datenbank-Fehler: " + error.message };
-  if (!data?.length) return { message: "Alle Filme sind auf dem neuesten Stand. 👍" };
-
-  const results = await mapLimit(data, 8, (t) => fetchTitleRow("movie", t.tmdb_id as number));
-  const rows: Awaited<ReturnType<typeof fetchTitleRow>>[] = [];
-  const netflixIds: number[] = [];
-  results.forEach((r, i) => {
-    if (r.status !== "fulfilled") return;
-    if (isNetflix(r.value.studios)) netflixIds.push(data[i].id as number);
-    else rows.push(r.value);
-  });
+  const results = await mapLimit(data, 8, (t) => fetchTitleRow(t.media_type as MediaType, t.tmdb_id as number));
+  const rows = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  // Filme, die TMDB nicht mehr kennt: auf 0 Stimmen setzen, damit sie nicht endlos wiederkommen
+  const failedIds = data.filter((_, k) => results[k].status !== "fulfilled").map((t) => t.id as number);
   if (rows.length) {
     const up = await admin.from("titles").upsert(rows, { onConflict: "media_type,tmdb_id" });
-    if (up.error) return { error: "Fehler beim Speichern: " + up.error.message };
+    if (up.error) throw new Error(up.error.message);
   }
-  if (netflixIds.length) await admin.from("titles").delete().in("id", netflixIds);
-  revalidatePath("/", "layout");
-  return {
-    message: `${rows.length} Filme aufgefrischt${netflixIds.length ? `, ${netflixIds.length} Netflix-Filme entfernt` : ""}.` +
-      (data.length === 60 ? " Es gibt noch mehr – einfach nochmal klicken." : ""),
-  };
+  if (failedIds.length) await admin.from("titles").update({ vote_count: 0 }).in("id", failedIds);
+  return { done: data.length, remaining: Math.max(0, (count ?? 0) - data.length) };
+}
+
+// ---------------- Verdachtsfälle ----------------
+
+export type Suspect = {
+  id: number; title: string; release_year: number | null; poster_path: string | null; genres: string[];
+  vote_average: number | null; vote_count: number | null; reasons: string[];
+};
+
+// Filme, die womöglich nicht in den Katalog gehören: schwach bewertet oder kaum bekannt.
+// Nie dabei: Preisträger und Filme, die beim Aussortieren schon behalten wurden.
+export async function getSuspects(minRating: number, minVotes: number): Promise<{ list: Suspect[]; missing: number }> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
+  const admin = createAdminClient();
+  const [{ data, error }, { count: missing }] = await Promise.all([
+    admin
+      .from("titles")
+      .select("id,title,release_year,poster_path,genres,vote_average,vote_count")
+      .is("kept_at", null)
+      .eq("oscars", "{}")
+      .eq("globes", "{}")
+      .not("vote_count", "is", null)
+      .or(`vote_average.lt.${minRating},vote_count.lt.${minVotes}`)
+      .order("vote_average", { ascending: true })
+      .limit(500),
+    admin.from("titles").select("id", { count: "exact", head: true }).is("vote_count", null),
+  ]);
+  if (error) throw new Error(error.message + " (wurde die Ergänzung 9 im SQL Editor ausgeführt?)");
+  const fmt = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const list = (data ?? []).map((t) => {
+    const reasons: string[] = [];
+    const avg = t.vote_average as number | null;
+    const cnt = t.vote_count as number | null;
+    if (avg != null && avg < minRating) reasons.push(`Schwach bewertet: ${fmt(avg)}`);
+    if (cnt != null && cnt < minVotes) reasons.push(`Kaum bekannt: ${cnt.toLocaleString("de-DE")} Stimmen`);
+    return { ...(t as Omit<Suspect, "reasons">), reasons };
+  });
+  return { list, missing: missing ?? 0 };
 }
 
 // ---------------- IMDb-Import ----------------
@@ -586,15 +617,16 @@ export async function clearBlocklist(): Promise<void> {
 
 // ---------------- Aussortieren (Tinder-Stil) ----------------
 
-export type CurationFilter = { genre?: string; decade?: number; noAwards?: boolean; order?: "unbekannt" | "zufall" | "neu" };
+export type CurationFilter = { genre?: string; decade?: number; order?: "unbekannt" | "schwach" | "zufall" | "neu" };
 export type CurationCard = {
   id: number; tmdb_id: number; media_type: string; title: string; release_year: number | null; genres: string[];
   directors: string[] | null; cast_names: string[] | null; overview: string | null; poster_path: string | null;
   popularity: number | null; runtime_seconds: number | null; oscars: string[] | null; globes: string[] | null;
+  vote_average: number | null; vote_count: number | null;
 };
 
 const CURATION_COLS =
-  "id,tmdb_id,media_type,title,release_year,genres,directors,cast_names,overview,poster_path,popularity,runtime_seconds,oscars,globes";
+  "id,tmdb_id,media_type,title,release_year,genres,directors,cast_names,overview,poster_path,popularity,runtime_seconds,oscars,globes,vote_average,vote_count";
 
 // Nächster Stapel noch nicht geprüfter Titel (max. 30).
 export async function getCurationBatch(f: CurationFilter, skip: number[]): Promise<{ cards: CurationCard[]; remaining: number }> {
@@ -614,6 +646,7 @@ export async function getCurationBatch(f: CurationFilter, skip: number[]): Promi
 
   let q = base();
   if (f.order === "neu") q = q.order("created_at", { ascending: false });
+  else if (f.order === "schwach") q = q.order("vote_average", { ascending: true, nullsFirst: false });
   else if (f.order === "zufall") q = q.order("tmdb_id", { ascending: Math.random() < 0.5 });
   else q = q.order("popularity", { ascending: true, nullsFirst: true });
   const { data, error, count } = await q.limit(f.order === "zufall" ? 120 : 30);

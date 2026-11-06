@@ -27,6 +27,8 @@ create table if not exists public.titles (
   overview          text,                                -- Kurzbeschreibung (nur Anzeige)
   poster_path       text,                                -- Plakat (Bild liegt bei TMDB)
   popularity        real,
+  vote_average      real,                             -- TMDB-Durchschnitt (0–10)
+  vote_count        integer,                          -- Anzahl Stimmen bei TMDB
   directors         text[] not null default '{}',   -- Regie (bei Serien: Schöpfer)
   studios           text[] not null default '{}',   -- Produktionsfirmen
   collection_id     integer,                          -- Filmreihe (TMDB)

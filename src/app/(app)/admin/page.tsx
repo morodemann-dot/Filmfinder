@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import AddPanel from "./AddPanel";
 import CatalogManager, { type ManageTitle } from "./CatalogManager";
 import Curate from "./Curate";
+import Suspects from "./Suspects";
 import { clearBlocklist, unblockTitle } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
@@ -18,6 +19,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const { bereich } = await searchParams;
   const manage = bereich === "verwalten";
   const curate = bereich === "aussortieren";
+  const suspects = bereich === "verdacht";
 
   const admin = createAdminClient();
   const [movies, shows, blocked] = await Promise.all([
@@ -47,14 +49,17 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         {(blocked.count ?? 0) > 0 && ` · ${blocked.count} gesperrt`}
       </p>
 
-      <div className="segmented" style={{ margin: "14px 0 20px", maxWidth: 420 }}>
-        <Link href="/admin" aria-pressed={!manage && !curate} className="seg-link">Hinzufügen</Link>
+      <div className="segmented four" style={{ margin: "14px 0 20px", maxWidth: 520 }}>
+        <Link href="/admin" aria-pressed={!manage && !curate && !suspects} className="seg-link">Hinzufügen</Link>
         <Link href="/admin?bereich=aussortieren" aria-pressed={curate} className="seg-link">Aussortieren</Link>
+        <Link href="/admin?bereich=verdacht" aria-pressed={suspects} className="seg-link">Verdachtsfälle</Link>
         <Link href="/admin?bereich=verwalten" aria-pressed={manage} className="seg-link">Verwalten</Link>
       </div>
 
       {curate ? (
         <Curate genres={genres} />
+      ) : suspects ? (
+        <Suspects />
       ) : manage ? (
         <>
           <CatalogManager titles={titles} />

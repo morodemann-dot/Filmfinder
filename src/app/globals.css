@@ -380,3 +380,13 @@ html, body { overflow-x: clip; }
 .linkish { background: none; border: 0; padding: 4px 6px; color: var(--muted); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .quick .poster, .quick .flash { width: min(200px, 22vh); }
 .quick .score-label { min-height: 26px; }
+
+/* ---------- Verdachtsfälle ---------- */
+.segmented.four .seg-link { font-size: 0.78rem; padding: 0 2px; }
+.manage-item.suspect { grid-template-columns: 28px 36px 1fr auto; }
+.suspect-why { font-size: 0.74rem; color: #ff9f0a; margin-top: 2px; }
+.suspect-actions { display: flex; flex-direction: column; gap: 4px; }
+.mini { border: 0; border-radius: 8px; padding: 5px 9px; font-size: 0.75rem; font-weight: 700; cursor: pointer; background: var(--surface-2); }
+.mini.keep { color: var(--ok); }
+.mini.remove { color: var(--danger); }
+.sheet .field .label { font-size: 0.75rem; font-weight: 500; color: var(--muted); }
