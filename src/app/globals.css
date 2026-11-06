@@ -407,3 +407,17 @@ details > summary { list-style: none; }
 /* Häkchen immer links neben dem Text */
 label.row.small { flex-wrap: nowrap; align-items: flex-start; }
 label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
+
+/* Filmfinder: vier Aktionen mit Beschriftung */
+.pick-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 16px; }
+.act {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; background: none; border: 0; cursor: pointer;
+  font-size: 0.7rem; font-weight: 500; color: var(--muted); padding: 0;
+}
+.act .round { width: 54px; height: 54px; display: flex; align-items: center; justify-content: center; font-size: 1.35rem; color: var(--text); }
+.act .round.remove { color: var(--danger); }
+.act .round.keep { color: var(--ok); }
+.act .round.seen { color: var(--accent); }
+.act:active .round { transform: scale(0.9); }
+.act:disabled { opacity: 0.4; }
+.linkish:disabled { opacity: 0.35; text-decoration: none; }

@@ -8,6 +8,7 @@ import { setFeedback } from "@/app/actions";
 
 // Der große Vorschlag auf der Filmfinder-Seite als Kartenstapel.
 // Links wischen / "Heute nicht" = nächster Vorschlag (nur für jetzt, ändert dein Profil nicht)
+// "Kein Interesse"              = wird gespeichert, die App lernt daraus
 // Rechts wischen / "Merken"     = auf die Merkliste
 // "Schon gesehen"               = optional gleich 1–10 bewerten
 
@@ -19,9 +20,10 @@ export type Pick = {
   reasons: string[];
 };
 
-type Action = "skip" | "merken" | "gesehen";
+type Action = "skip" | "nein" | "merken" | "gesehen";
 const THRESHOLD = 90;
-const STAMP: Record<Action, string> = { skip: "HEUTE NICHT", merken: "MERKEN", gesehen: "GESEHEN" };
+const STAMP: Record<Action, string> = { skip: "HEUTE NICHT", nein: "KEIN INTERESSE", merken: "MERKEN", gesehen: "GESEHEN" };
+const STATUS = { nein: "nicht_interessiert", merken: "merkliste", gesehen: "gesehen" } as const;
 
 export default function PickDeck({ picks }: { picks: Pick[] }) {
   const router = useRouter();
@@ -33,7 +35,7 @@ export default function PickDeck({ picks }: { picks: Pick[] }) {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const start = useRef<{ x: number; moved: boolean } | null>(null);
+  const start = useRef<{ x: number; y: number; t: number; moved: boolean } | null>(null);
 
   // Neue Filterauswahl = neuer Stapel
   const key = picks.map((p) => p.id).join(",");
@@ -60,7 +62,7 @@ export default function PickDeck({ picks }: { picks: Pick[] }) {
     setEntering(null);
     setHistory((h) => [...h.slice(-19), { pick: p, action }]);
     if (action !== "skip") {
-      setFeedback(p.id, action === "merken" ? "merkliste" : "gesehen", score).catch(() =>
+      setFeedback(p.id, STATUS[action], action === "gesehen" ? score : null).catch(() =>
         setError(`„${p.title}“ konnte nicht gespeichert werden.`),
       );
     }
@@ -79,29 +81,38 @@ export default function PickDeck({ picks }: { picks: Pick[] }) {
   // Wischen
   function onDown(e: React.PointerEvent) {
     if (rating) return;
-    start.current = { x: e.clientX, moved: false };
+    start.current = { x: e.clientX, y: e.clientY, t: e.timeStamp, moved: false };
     setDragging(true);
   }
   function onMove(e: React.PointerEvent) {
     if (!start.current) return;
     const d = e.clientX - start.current.x;
-    if (Math.abs(d) > 6) {
-      start.current.moved = true;
+    const dy = e.clientY - start.current.y;
+    // Jede spürbare Bewegung (auch Scrollen nach oben/unten) zählt nicht mehr als Antippen
+    if (Math.abs(d) > 6 || Math.abs(dy) > 6) start.current.moved = true;
+    if (Math.abs(d) > 6 && Math.abs(d) > Math.abs(dy)) {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     }
     setDx(d);
   }
-  function onUp() {
+  function onUp(e: React.PointerEvent) {
     if (!start.current) return;
-    const moved = start.current.moved;
+    const { moved, t } = start.current;
     start.current = null;
     setDragging(false);
     if (dx > THRESHOLD) go("merken");
     else if (dx < -THRESHOLD) go("skip");
     else {
       setDx(0);
-      if (!moved && current) router.push(`/titel/${current.id}`); // Tippen = Details
+      // Nur ein echtes, kurzes Antippen öffnet die Details
+      if (!moved && e.timeStamp - t < 500 && current) router.push(`/titel/${current.id}`);
     }
+  }
+  // Geste abgebrochen (z. B. weil iOS das Scrollen übernimmt) = niemals Antippen
+  function onCancel() {
+    start.current = null;
+    setDragging(false);
+    setDx(0);
   }
 
   useEffect(() => {
@@ -137,7 +148,7 @@ export default function PickDeck({ picks }: { picks: Pick[] }) {
                   onPointerDown={i === 0 ? onDown : undefined}
                   onPointerMove={i === 0 ? onMove : undefined}
                   onPointerUp={i === 0 ? onUp : undefined}
-                  onPointerCancel={i === 0 ? onUp : undefined}
+                  onPointerCancel={i === 0 ? onCancel : undefined}
                   onAnimationEnd={enter ? () => setEntering(null) : undefined}
                 >
                   {i === 0 && (
@@ -172,7 +183,7 @@ export default function PickDeck({ picks }: { picks: Pick[] }) {
           </div>
         )}
         {flying.map((f) => {
-          const dir = f.action === "skip" ? -1 : 1;
+          const dir = f.action === "skip" || f.action === "nein" ? -1 : 1;
           return (
             <div
               key={`fly-${f.pick.id}-${f.action}`}
@@ -193,11 +204,22 @@ export default function PickDeck({ picks }: { picks: Pick[] }) {
         })}
       </div>
 
-      <div className="swipe-actions pick-actions">
-        <button className="round undo" onClick={undo} disabled={history.length === 0} aria-label="Rückgängig" title="Rückgängig">↺</button>
-        <button className="pill-btn" onClick={() => go("skip")} disabled={!current || rating}>Heute nicht</button>
-        <button className="pill-btn" onClick={() => setRating(true)} disabled={!current || rating}>Schon gesehen</button>
-        <button className="round keep" onClick={() => go("merken")} disabled={!current || rating} aria-label="Merken" title="Merken">♥</button>
+      <div className="pick-actions">
+        <button className="act" onClick={() => go("nein")} disabled={!current || rating}>
+          <span className="round remove" aria-hidden>✕</span>Kein Interesse
+        </button>
+        <button className="act" onClick={() => go("skip")} disabled={!current || rating}>
+          <span className="round" aria-hidden>»</span>Heute nicht
+        </button>
+        <button className="act" onClick={() => setRating(true)} disabled={!current || rating}>
+          <span className="round seen" aria-hidden>✓</span>Schon gesehen
+        </button>
+        <button className="act" onClick={() => go("merken")} disabled={!current || rating}>
+          <span className="round keep" aria-hidden>♥</span>Merken
+        </button>
+      </div>
+      <div style={{ textAlign: "center", marginTop: 6 }}>
+        <button className="linkish" onClick={undo} disabled={history.length === 0}>↺ Rückgängig</button>
       </div>
       {error && <p className="error" style={{ textAlign: "center" }}>{error}</p>}
     </div>
