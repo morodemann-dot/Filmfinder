@@ -21,6 +21,8 @@ export type Title = {
   collection_id: number | null;
   collection_name: string | null;
   imdb_id?: string | null;
+  oscars?: string[] | null;
+  globes?: string[] | null;
 };
 
 export type Status = "merkliste" | "gesehen" | "nicht_gesehen" | "nicht_interessiert";
@@ -54,4 +56,41 @@ export function formatRuntime(seconds: number | null) {
 export function formatStars(rating: number | null) {
   if (!rating) return null;
   return (rating / 2).toLocaleString("de-DE") + " ★";
+}
+
+// Preiskategorien ins Deutsche übersetzen (unbekannte bleiben englisch).
+const AWARD_DE: [RegExp, string][] = [
+  [/^Best Picture$|^Best Motion Picture – Drama$/, "Bester Film"],
+  [/^Best Motion Picture – Musical or Comedy$|^Best Motion Picture – Comedy or Musical$/, "Bester Film (Komödie/Musical)"],
+  [/^Best Director$/, "Beste Regie"],
+  [/^Best Actor$|^Best Actor – Motion Picture Drama$/, "Bester Hauptdarsteller"],
+  [/^Best Actress$|^Best Actress – Motion Picture Drama$/, "Beste Hauptdarstellerin"],
+  [/^Best Actor – Motion Picture (Musical or Comedy|Comedy or Musical)$/, "Bester Hauptdarsteller (Komödie/Musical)"],
+  [/^Best Actress – Motion Picture (Musical or Comedy|Comedy or Musical)$/, "Beste Hauptdarstellerin (Komödie/Musical)"],
+  [/^Best Supporting Actor/, "Bester Nebendarsteller"],
+  [/^Best Supporting Actress/, "Beste Nebendarstellerin"],
+  [/Original Screenplay/, "Bestes Originaldrehbuch"],
+  [/Adapted Screenplay/, "Bestes adaptiertes Drehbuch"],
+  [/^Best Screenplay$/, "Bestes Drehbuch"],
+  [/^Best Cinematography$/, "Beste Kamera"],
+  [/^Best Film Editing$/, "Bester Schnitt"],
+  [/^Best Original (Dramatic )?Score$|^Best Original Musical/, "Beste Filmmusik"],
+  [/^Best Original Song$/, "Bester Song"],
+  [/^Best Visual Effects$/, "Beste visuelle Effekte"],
+  [/^Best Sound Editing$/, "Bester Tonschnitt"],
+  [/^Best Sound( Mixing)?$/, "Bester Ton"],
+  [/^Best Costume Design$/, "Bestes Kostümdesign"],
+  [/^Best (Production Design|Art Direction)$/, "Bestes Szenenbild"],
+  [/Makeup/, "Bestes Make-up"],
+  [/^Best Animated Feature/, "Bester Animationsfilm"],
+  [/^Best International Feature Film$|^Best Foreign Language Film$/, "Bester internationaler Film"],
+  [/^Best (Non-English Language|Foreign Language) (Motion Picture|Film)/, "Bester fremdsprachiger Film"],
+  [/^Best Documentary Feature/, "Bester Dokumentarfilm"],
+  [/Animated Short/, "Bester animierter Kurzfilm"],
+  [/Live Action Short/, "Bester Kurzfilm"],
+  [/Documentary.*Short/, "Bester Dokumentar-Kurzfilm"],
+  [/Casting/, "Bestes Casting"],
+];
+export function awardDe(name: string) {
+  return AWARD_DE.find(([re]) => re.test(name))?.[1] ?? name;
 }

@@ -7,8 +7,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabase/server";
 import {
+  AWARD_FILMS,
   DECADES,
   IMPORT_LISTS,
+  isShortOnly,
   collectionParts,
   keywordMovies,
   searchCollections,
@@ -464,4 +466,39 @@ export async function importImdbChunk(items: ImdbItem[]): Promise<ImdbChunkResul
 export async function finishImdbImport() {
   revalidatePath("/");
   revalidatePath("/bibliothek");
+}
+
+// ---------------- Oscar & Golden Globe ----------------
+
+export type AwardsChunkResult = { next: number | null; total: number; ok: number; netflix: number; failed: number; updated: number };
+
+// Verarbeitet einen Teil der Preisträger-Liste (40 Filme pro Aufruf). Nur für Admins.
+export async function importAwardsChunk(offset: number, includeShorts: boolean): Promise<AwardsChunkResult> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
+  const list = AWARD_FILMS.filter((a) => includeShorts || !isShortOnly(a));
+  const chunk = list.slice(offset, offset + 40);
+  const admin = createAdminClient();
+
+  const ids = chunk.map((a) => a.tmdb);
+  const have = await existingMovieIds(ids);
+
+  // Schon vorhandene Filme: nur die Preise nachtragen
+  const existing = chunk.filter((a) => have.has(a.tmdb));
+  await mapLimit(existing, 8, async (a) => {
+    const { error } = await admin.from("titles").update({ oscars: a.oscars, globes: a.globes })
+      .eq("media_type", "movie").eq("tmdb_id", a.tmdb);
+    if (error) throw new Error(error.message);
+  });
+
+  // Neue Filme holen (Netflix wird aussortiert, Studio-Filter gilt hier nicht)
+  const missing = ids.filter((x) => !have.has(x));
+  const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0 };
+
+  const next = offset + chunk.length;
+  return {
+    next: next < list.length ? next : null,
+    total: list.length,
+    ok: r.ok, netflix: r.netflix, failed: r.failed, updated: existing.length,
+  };
 }

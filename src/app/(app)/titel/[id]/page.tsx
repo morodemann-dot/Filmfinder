@@ -3,7 +3,7 @@ import Poster from "@/components/Poster";
 import TitleCard from "@/components/TitleCard";
 import FeedbackControls from "@/components/FeedbackControls";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { formatRuntime, type Status, type Title } from "@/lib/types";
+import { awardDe, formatRuntime, type Status, type Title } from "@/lib/types";
 
 // Detailseite eines Films oder einer Serie.
 export default async function TitlePage({ params }: { params: Promise<{ id: string }> }) {
@@ -77,6 +77,22 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
           <div className="small" style={{ marginBottom: 10 }}>
             <span className="muted">Studios: </span>
             {title.studios.slice(0, 4).join(", ")}
+          </div>
+        )}
+        {((title.oscars?.length ?? 0) > 0 || (title.globes?.length ?? 0) > 0) && (
+          <div className="panel" style={{ padding: 12, marginBottom: 12 }}>
+            {(title.oscars?.length ?? 0) > 0 && (
+              <div className="small" style={{ marginBottom: 4 }}>
+                🏆 <strong>{title.oscars!.length} Oscar{title.oscars!.length > 1 ? "s" : ""}:</strong>{" "}
+                <span className="muted">{title.oscars!.map(awardDe).join(", ")}</span>
+              </div>
+            )}
+            {(title.globes?.length ?? 0) > 0 && (
+              <div className="small">
+                🌐 <strong>{title.globes!.length} Golden Globe{title.globes!.length > 1 ? "s" : ""}:</strong>{" "}
+                <span className="muted">{title.globes!.map(awardDe).join(", ")}</span>
+              </div>
+            )}
           </div>
         )}
         {title.overview && <p style={{ lineHeight: 1.55 }}>{title.overview}</p>}

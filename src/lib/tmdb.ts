@@ -1,6 +1,8 @@
 // Alles, was mit der Filmdatenbank TMDB zu tun hat.
 // Hinweis: "This product uses the TMDB API but is not endorsed or certified by TMDB."
 
+import awardsData from "@/data/awards.json";
+
 const BASE = "https://api.themoviedb.org/3";
 export const IMG = "https://image.tmdb.org/t/p";
 
@@ -105,6 +107,14 @@ const SERIES_STATUS: Record<string, string> = {
   Cancelled: "abgesetzt",
 };
 
+// Oscar- und Golden-Globe-Gewinner seit 1980 (Quelle: Wikidata, CC0).
+export type AwardFilm = { tmdb: number; imdb: string | null; year: number | null; oscars: string[]; globes: string[] };
+export const AWARD_FILMS = awardsData as AwardFilm[];
+const AWARDS_BY_TMDB = new Map(AWARD_FILMS.map((a) => [a.tmdb, a]));
+export function isShortOnly(a: AwardFilm) {
+  return a.globes.length === 0 && a.oscars.length > 0 && a.oscars.every((o) => /short/i.test(o));
+}
+
 // Holt die Details zu einem Titel und übersetzt sie in unser Datenformat (M001–M010).
 export async function fetchTitleRow(type: MediaType, id: number) {
   const d = await tmdb<Details>(`/${type}/${id}`, { append_to_response: "credits" });
@@ -147,6 +157,8 @@ export async function fetchTitleRow(type: MediaType, id: number) {
     collection_id: type === "movie" ? (d.belongs_to_collection?.id ?? null) : null,
     collection_name: type === "movie" ? (d.belongs_to_collection?.name ?? null) : null,
     imdb_id: type === "movie" ? (d.imdb_id ?? null) : null,
+    oscars: type === "movie" ? (AWARDS_BY_TMDB.get(d.id)?.oscars ?? []) : [],
+    globes: type === "movie" ? (AWARDS_BY_TMDB.get(d.id)?.globes ?? []) : [],
     metadata_source: "tmdb",
     fetched_at: new Date().toISOString(),
   };

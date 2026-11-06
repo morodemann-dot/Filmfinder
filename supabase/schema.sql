@@ -32,6 +32,8 @@ create table if not exists public.titles (
   collection_id     integer,                          -- Filmreihe (TMDB)
   collection_name   text,
   imdb_id           text,                             -- z. B. tt0111161
+  oscars            text[] not null default '{}',   -- gewonnene Oscar-Kategorien (seit 1980)
+  globes            text[] not null default '{}',   -- gewonnene Golden-Globe-Kategorien
   metadata_source   text not null default 'tmdb',
   fetched_at        timestamptz not null default now(),  -- TMDB: max. 6 Monate speichern, dann auffrischen
   created_at        timestamptz not null default now(),

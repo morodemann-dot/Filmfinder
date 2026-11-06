@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { DirectorForm, FranchiseForm, HollywoodForm, MaintenanceForms } from "./ImportForm";
+import { AwardsForm, DirectorForm, FranchiseForm, HollywoodForm, MaintenanceForms } from "./ImportForm";
 import { removeAllSeries } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 
@@ -27,6 +27,7 @@ export default async function AdminPage() {
 
       <div style={{ display: "grid", gap: 16 }}>
         <HollywoodForm />
+        <AwardsForm />
         <FranchiseForm />
         <DirectorForm />
         <MaintenanceForms />

@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   completeCollections,
   importDirector,
   importFranchise,
+  importAwardsChunk,
   importHollywood,
   refreshOldMovies,
+  type AwardsChunkResult,
   type FormState,
 } from "@/app/actions";
 
@@ -148,6 +150,69 @@ export function MaintenanceForms() {
         <button className="btn" disabled={cPending}>{cPending ? "Prüfe Reihen …" : "Filmreihen vervollständigen"}</button>
         <Status state={cState} />
       </form>
+    </div>
+  );
+}
+
+// Import 4: Oscar- und Golden-Globe-Gewinner seit 1980 (läuft automatisch in Etappen)
+export function AwardsForm() {
+  const [includeShorts, setIncludeShorts] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [stats, setStats] = useState({ ok: 0, updated: 0, netflix: 0, failed: 0 });
+  const [error, setError] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
+
+  async function run() {
+    setRunning(true); setError(null); setFinished(false);
+    const total = { ok: 0, updated: 0, netflix: 0, failed: 0 };
+    let offset: number | null = 0;
+    try {
+      while (offset !== null) {
+        const r: AwardsChunkResult = await importAwardsChunk(offset, includeShorts);
+        total.ok += r.ok; total.updated += r.updated; total.netflix += r.netflix; total.failed += r.failed;
+        setStats({ ...total });
+        offset = r.next;
+        setProgress({ done: r.next ?? r.total, total: r.total });
+      }
+      setFinished(true);
+    } catch (e) {
+      setError("Abgebrochen: " + (e instanceof Error ? e.message : String(e)) + " – einfach nochmal starten, Vorhandenes wird übersprungen.");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h2 style={{ marginTop: 0 }}>🏆 Oscar- & Golden-Globe-Gewinner seit 1980</h2>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Alle Filme, die in irgendeiner Kategorie gewonnen haben – auch Preise an Personen für einen Film
+        (z. B. „Bester Hauptdarsteller“). Quelle: Wikidata. Netflix-Produktionen werden aussortiert.
+        Bei Filmen, die schon im Katalog sind, werden die Preise nachgetragen.
+      </p>
+      <label className="row small" style={{ marginBottom: 12 }}>
+        <input type="checkbox" checked={includeShorts} onChange={(e) => setIncludeShorts(e.target.checked)}
+          disabled={running} style={{ width: 20, height: 20 }} />
+        Auch Filme, die nur einen Kurzfilm-Oscar gewonnen haben (ca. 140 meist unbekannte Kurzfilme)
+      </label>
+      <button className="btn primary" style={{ width: "100%" }} onClick={run} disabled={running}>
+        {running ? `Importiere … ${progress?.done ?? 0} / ${progress?.total ?? "?"}` : "Preisträger importieren"}
+      </button>
+      {progress && (
+        <div className="progress" style={{ marginTop: 14 }}>
+          <div style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+        </div>
+      )}
+      {(running || finished) && (
+        <p className="small">
+          {stats.ok} neu · {stats.updated} schon vorhanden (Preise ergänzt)
+          {stats.netflix > 0 && <> · {stats.netflix} Netflix aussortiert</>}
+          {stats.failed > 0 && <> · {stats.failed} fehlgeschlagen</>}
+        </p>
+      )}
+      {finished && <p className="success">Fertig!</p>}
+      {error && <p className="error">{error}</p>}
     </div>
   );
 }
