@@ -390,3 +390,20 @@ html, body { overflow-x: clip; }
 .mini.keep { color: var(--ok); }
 .mini.remove { color: var(--danger); }
 .sheet .field .label { font-size: 0.75rem; font-weight: 500; color: var(--muted); }
+
+/* ---------- App-Rahmen: Inhalt scrollt, Leiste steht fest unten (kein "fixed" → springt auf iOS nicht) ---------- */
+html:has(.app), html:has(.app) body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+.app {
+  height: 100vh; height: 100dvh; /* volle Bildschirmhöhe, auch unter der Home-Leiste */
+  display: flex; flex-direction: column;
+  background: var(--bg);
+}
+.scroller {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
+}
+.app .shell { padding-bottom: 28px; }
+.app .nav {
+  position: static; flex: none;
+  height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+}

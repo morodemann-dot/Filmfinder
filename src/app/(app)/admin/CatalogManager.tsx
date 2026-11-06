@@ -189,7 +189,7 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
               </div>
             </a>
             <button className="icon-btn" title="Entfernen" aria-label={`${t.title} entfernen`}
-              onClick={() => { setSelected(new Set([t.id])); setConfirming(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              onClick={() => { setSelected(new Set([t.id])); setConfirming(true); document.querySelector(".scroller")?.scrollTo({ top: 0, behavior: "smooth" }); }}>
               ✕
             </button>
           </div>
