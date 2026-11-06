@@ -1,111 +1,166 @@
 import Link from "next/link";
-import { Suspense } from "react";
-import TitleCard from "@/components/TitleCard";
-import FilterBar from "@/components/FilterBar";
-import SearchResults from "@/components/SearchResults";
-import { createClient } from "@/lib/supabase/server";
-import type { Title } from "@/lib/types";
+import Poster from "@/components/Poster";
+import { createClient, getUser } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/fetchAll";
+import { buildProfile, recommend, topPreferences, type RatedTitle, type Recommendation } from "@/lib/recommend";
+import { MOODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
+import { formatRuntime, type Title } from "@/lib/types";
 
-// Startseite "Entdecken": Suchfeld oben. Ohne Suchbegriff der ganze Katalog
-// (ohne das, was du schon eingeordnet hast), mit Suchbegriff die Treffer.
+// Startseite "Filmfinder": erst die Stimmung wählen, dann gibt's einen klaren Tipp + ein paar Alternativen.
 
-const SORTS = {
-  beliebt: "Beliebt",
-  neu: "Neu im Katalog",
-  preise: "Preisgekrönt",
-  jahr_neu: "Neueste zuerst",
-  jahr_alt: "Älteste zuerst",
-};
-const DECADES = [1980, 1990, 2000, 2010, 2020];
-const PER_PAGE = 120;
+const COLS =
+  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds";
+const MIN_RATINGS = 10;
 
-type SP = { q?: string; format?: string; genre?: string; sort?: string; jahrzehnt?: string; seite?: string };
+type SP = { stimmung?: string; zeit?: string; modus?: string };
 
-export default async function DiscoverPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const sp = await searchParams;
-  const query = (sp.q ?? "").trim();
+function href(sp: SP, change: Partial<SP>) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries({ ...sp, ...change })) if (v) p.set(k, v);
+  const s = p.toString();
+  return s ? `/?${s}` : "/";
+}
 
-  const searchBox = (
-    <form action="/" className="searchbox" role="search">
-      <svg viewBox="0 0 24 24" aria-hidden><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
-      <input name="q" type="search" defaultValue={query} placeholder="Film oder Serie suchen …"
-        autoComplete="off" enterKeyHint="search" aria-label="Suchen" />
-      {query && <Link href="/" className="searchbox-clear" aria-label="Suche beenden">Abbrechen</Link>}
-    </form>
+function Hero({ r }: { r: Recommendation }) {
+  const t = r.title;
+  return (
+    <Link href={`/titel/${t.id}`} className="hero">
+      <div className="hero-poster"><Poster path={t.poster_path} title={t.title} size="w342" /></div>
+      <div className="hero-body">
+        <div className="eyebrow" style={{ color: "var(--accent)" }}>Unser Tipp</div>
+        <div className="hero-title">{t.title}</div>
+        <div className="caption">
+          {[t.release_year, formatRuntime(t.runtime_seconds), t.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
+        </div>
+        <ul className="reasons">{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>
+      </div>
+    </Link>
   );
+}
 
-  if (query) {
+function Tile({ r }: { r: Recommendation }) {
+  const t = r.title;
+  return (
+    <Link href={`/titel/${t.id}`} className="card">
+      <Poster path={t.poster_path} title={t.title} size="w185" />
+      <div className="card-title">{t.title}</div>
+      <div className="card-meta">{r.reasons[0]?.replace(/ \(.*\)$/, "") ?? t.release_year}</div>
+    </Link>
+  );
+}
+
+export default async function FilmfinderPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams;
+  const mood = MOODS.find((m) => m.key === sp.stimmung) ?? null;
+  const time = (sp.zeit && sp.zeit in TIMES ? sp.zeit : "egal") as TimeKey;
+  const surprise = sp.modus === "ueberrasch";
+
+  const supabase = await createClient();
+  const user = await getUser();
+  const [mine, catalog] = await Promise.all([
+    fetchAll<{ status: string; rating: number | null; titles: Title | null }>((from, to) =>
+      supabase.from("user_title_feedback").select(`status,rating,titles(${COLS})`).eq("user_id", user!.id).range(from, to),
+    ),
+    fetchAll<Title>((from, to) => supabase.from("titles").select(COLS).eq("media_type", "movie").range(from, to)),
+  ]);
+
+  const rated: RatedTitle[] = mine.filter((m) => m.titles).map((m) => ({ ...m.titles!, rating: m.rating, status: m.status }));
+  const seen = new Set(rated.map((r) => r.id));
+  const { prefs, ratedCount } = buildProfile(rated);
+
+  if (ratedCount < MIN_RATINGS) {
     return (
       <>
-        <h1>Entdecken</h1>
-        {searchBox}
-        <SearchResults query={query} />
+        <h1>Was soll es heute werden?</h1>
+        <div className="empty">
+          <p>
+            Damit die App deinen Geschmack erkennen kann, bewerte bitte mindestens <strong>{MIN_RATINGS} Filme</strong>
+            {" "}(bisher: {ratedCount}).
+          </p>
+          <div className="row" style={{ justifyContent: "center" }}>
+            <Link href="/bewerten" className="btn primary">Jetzt bewerten</Link>
+            <Link href="/imdb" className="btn">IMDb importieren</Link>
+          </div>
+        </div>
       </>
     );
   }
-  const format = sp.format === "film" || sp.format === "serie" ? sp.format : null;
-  const sort = sp.sort && sp.sort in SORTS ? sp.sort : "beliebt";
-  const decade = DECADES.includes(Number(sp.jahrzehnt)) ? Number(sp.jahrzehnt) : null;
-  const genre = sp.genre ?? null;
-  const page = Math.max(1, Number(sp.seite) || 1);
 
-  const supabase = await createClient();
-  const [{ data: titles, error }, { data: genreRows }] = await Promise.all([
-    supabase.rpc("discover_titles", {
-      p_media: format === "film" ? "movie" : format === "serie" ? "tv" : null,
-      p_genre: genre,
-      p_decade: decade,
-      p_sort: sort,
-      p_limit: PER_PAGE + 1, // einer mehr, um zu wissen, ob es weitergeht
-      p_offset: (page - 1) * PER_PAGE,
-    }),
-    supabase.from("titles").select("genres").limit(5000),
-  ]);
-  const genres = [...new Set((genreRows ?? []).flatMap((r) => r.genres as string[]))].sort((a, b) => a.localeCompare(b, "de"));
-  const list = ((titles ?? []) as Title[]).slice(0, PER_PAGE);
-  const hasMore = (titles?.length ?? 0) > PER_PAGE;
-
-  const pageLink = (n: number) => {
-    const p = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]);
-    if (n > 1) p.set("seite", String(n));
-    else p.delete("seite");
-    const s = p.toString();
-    return s ? `/?${s}` : "/";
-  };
+  // Kandidaten: ungesehen + passend zu Stimmung und Zeit
+  const pops = catalog.map((t) => t.popularity ?? 0).sort((a, b) => a - b);
+  const medianPop = pops[Math.floor(pops.length / 2)] ?? 0;
+  const candidates = catalog.filter(
+    (t) => !seen.has(t.id) && (!mood || matchesMood(t, mood)) && matchesTime(t, time) &&
+      (!surprise || (t.popularity ?? 0) < medianPop),
+  );
+  const recs = recommend(candidates, prefs).filter((r) => r.score > 0.1 && r.reasons.length > 0);
+  const [hero, ...rest] = recs;
+  const more = rest.slice(0, 12);
+  const learned = topPreferences(prefs, 8);
 
   return (
     <>
-      <h1>Entdecken</h1>
-      {searchBox}
-      <Suspense>
-        <FilterBar sorts={SORTS} defaultSort="beliebt" genres={genres} decades={DECADES} />
-      </Suspense>
+      <h1>Was soll es heute werden?</h1>
 
-      {error ? (
-        <div className="empty error">
-          Die Entdecken-Abfrage fehlt noch in der Datenbank (Ergänzung 6 im Supabase SQL Editor ausführen).
-          <br />
-          <span className="small">{error.message}</span>
+      <div className="moods">
+        {MOODS.map((m) => {
+          const on = mood?.key === m.key;
+          return (
+            <Link key={m.key} href={href(sp, { stimmung: on ? undefined : m.key })} className={`mood ${on ? "on" : ""}`}
+              style={{ ["--tint" as string]: m.tint }} aria-current={on}>
+              <span className="mood-label">{m.label}</span>
+              <span className="mood-hint">{m.hint}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="toolbar" style={{ marginTop: 14 }}>
+        <div className="segmented" style={{ minWidth: 260 }}>
+          <Link href={href(sp, { modus: undefined })} aria-pressed={!surprise} className="seg-link">Sichere Wahl</Link>
+          <Link href={href(sp, { modus: "ueberrasch" })} aria-pressed={surprise} className="seg-link">Überrasch mich</Link>
         </div>
-      ) : list.length > 0 ? (
-        <>
-          <div className="grid">
-            {list.map((t) => (
-              <TitleCard key={t.id} t={t} badge={(t.oscars?.length ?? 0) > 0 ? `🏆 ${t.oscars!.length}` : null} />
-            ))}
-          </div>
-          <div className="pager">
-            {page > 1 && <Link className="btn" href={pageLink(page - 1)}>Zurück</Link>}
-            {hasMore && <Link className="btn primary" href={pageLink(page + 1)}>Mehr anzeigen</Link>}
-          </div>
-        </>
-      ) : (
-        <div className="empty">
-          {genreRows && genreRows.length === 0
-            ? "Der Katalog ist noch leer. Ein Admin kann ihn unter „Katalog“ füllen."
-            : "Hier ist nichts (mehr) – probier einen anderen Filter."}
+        <div className="row" style={{ gap: 6 }}>
+          {(Object.keys(TIMES) as TimeKey[]).map((k) => (
+            <Link key={k} href={href(sp, { zeit: k === "egal" ? undefined : k })}
+              className={`pill ${time === k ? "on" : ""}`}>{TIMES[k].label}</Link>
+          ))}
         </div>
-      )}
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        {hero ? (
+          <>
+            <Hero r={hero} />
+            {more.length > 0 && (
+              <>
+                <h2 className="section">Ebenfalls passend</h2>
+                <div className="grid">{more.map((r) => <Tile key={r.title.id} r={r} />)}</div>
+              </>
+            )}
+          </>
+        ) : (
+          <div className="empty">
+            Dafür haben wir gerade nichts Passendes im Katalog. Probier eine andere Stimmung oder Länge
+            {surprise ? " – oder „Sichere Wahl“" : ""}.
+          </div>
+        )}
+      </div>
+
+      <details className="panel" style={{ marginTop: 28 }}>
+        <summary className="eyebrow" style={{ cursor: "pointer" }}>Was die App über dich gelernt hat</summary>
+        <p className="caption">
+          Basierend auf {ratedCount} Bewertungen. Bisher berücksichtigt: Genre, Regie, Besetzung, Filmreihen und Preise.
+          Stimmungen beruhen vorerst auf Genres – mit Stufe 2 (KI-Merkmale wie Grundstimmung, Spannung, Humor) werden sie genauer.
+        </p>
+        <div className="tags" style={{ marginBottom: 0 }}>
+          {learned.map((p) => (
+            <span key={p.key} className="tag">
+              {p.label} · {p.n} Filme · Ø {p.avgScore?.toLocaleString("de-DE", { maximumFractionDigits: 1 })}
+            </span>
+          ))}
+        </div>
+      </details>
     </>
   );
 }

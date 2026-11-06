@@ -35,10 +35,10 @@ export const MOODS: Mood[] = [
 ];
 
 export const TIMES = {
-  egal: { label: "Egal wie lang", max: Infinity, min: 0 },
-  kurz: { label: "Unter 1 ¾ Std.", max: 105 * 60, min: 0 },
-  mittel: { label: "1 ¾ – 2 ½ Std.", max: 150 * 60, min: 105 * 60 },
-  lang: { label: "Darf lang sein (2 ½ Std.+)", max: Infinity, min: 150 * 60 },
+  egal: { label: "Jede Länge", max: Infinity, min: 0 },
+  kurz: { label: "Bis 105 Min.", max: 105 * 60 + 1, min: 0 },
+  mittel: { label: "105–150 Min.", max: 150 * 60 + 1, min: 105 * 60 + 1 },
+  lang: { label: "Über 150 Min.", max: Infinity, min: 150 * 60 + 1 },
 } as const;
 export type TimeKey = keyof typeof TIMES;
 

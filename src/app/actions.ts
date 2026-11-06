@@ -153,7 +153,7 @@ export async function importList(_: FormState, formData: FormData): Promise<Form
   }
 
   const { count } = await admin.from("titles").select("id", { count: "exact", head: true });
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   return {
     message: `${ok} Titel importiert/aktualisiert${failed ? `, ${failed} fehlgeschlagen` : ""}. Katalog jetzt: ${count ?? "?"} Titel. Nächste Startseite: ${from + pages}.`,
   };
@@ -226,7 +226,7 @@ export async function importHollywood(_: FormState, formData: FormData): Promise
     return { error: "Fehler beim Import: " + (e instanceof Error ? e.message : String(e)) };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   const more = lastPage < totalPages
     ? `Für mehr: „Ab Seite“ ${lastPage + 1} (von ${totalPages}).`
     : "Alle passenden Filme dieses Jahrzehnts sind drin.";
@@ -247,7 +247,7 @@ export async function importDirector(_: FormState, formData: FormData): Promise<
     if (!found) return { error: `Niemand gefunden für „${name}“.` };
     if (found.ids.length === 0) return { error: `${found.person}: keine passenden Filme ab 1980 gefunden.` };
     const r = await importMovieIds(found.ids.slice(0, 60), false);
-    revalidatePath("/");
+    revalidatePath("/", "layout");
     return { message: `${found.person}: ${summary(r)}. Filme im Katalog: ${await catalogMovieCount()}.` };
   } catch (e) {
     return { error: "Fehler beim Import: " + (e instanceof Error ? e.message : String(e)) };
@@ -259,7 +259,7 @@ export async function removeAllSeries(): Promise<void> {
   const user = await getUser();
   if (!isAdmin(user?.email)) return;
   await createAdminClient().from("titles").delete().eq("media_type", "tv");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   revalidatePath("/admin");
 }
 
@@ -320,7 +320,7 @@ export async function completeCollections(): Promise<FormState> {
     return { error: "Fehler: " + (e instanceof Error ? e.message : String(e)) };
   }
   await markCollectionsChecked(processed);
-  revalidatePath("/");
+  revalidatePath("/", "layout");
 
   const rest = open.size - processed.length;
   return {
@@ -364,7 +364,7 @@ export async function importFranchise(_: FormState, formData: FormData): Promise
     const missing = [...ids].filter((x) => !have.has(x)).slice(0, 70);
     const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0 };
     await markCollectionsChecked(collections.map((c, i) => ({ id: c.id, name: names[i] ?? c.name })));
-    revalidatePath("/");
+    revalidatePath("/", "layout");
 
     const found = names.length ? `Reihen: ${names.join(", ")}` : "Keine Filmreihe gefunden";
     return {
@@ -399,7 +399,7 @@ export async function refreshOldMovies(): Promise<FormState> {
     if (up.error) return { error: "Fehler beim Speichern: " + up.error.message };
   }
   if (netflixIds.length) await admin.from("titles").delete().in("id", netflixIds);
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   return {
     message: `${rows.length} Filme aufgefrischt${netflixIds.length ? `, ${netflixIds.length} Netflix-Filme entfernt` : ""}.` +
       (data.length === 60 ? " Es gibt noch mehr – einfach nochmal klicken." : ""),
@@ -484,7 +484,7 @@ export async function importImdbChunk(items: ImdbItem[]): Promise<ImdbChunkResul
 }
 
 export async function finishImdbImport() {
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   revalidatePath("/bibliothek");
 }
 
@@ -540,7 +540,7 @@ export async function importActor(_: FormState, formData: FormData): Promise<For
     const have = await existingMovieIds(found.ids);
     const missing = found.ids.filter((x) => !have.has(x)).slice(0, 60);
     const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0 };
-    revalidatePath("/");
+    revalidatePath("/", "layout");
     return {
       message: `${found.person}: ${found.ids.length} passende Filme, ${have.size} waren schon im Katalog, ${summary(r)}. Filme im Katalog: ${await catalogMovieCount()}.`,
     };
@@ -571,7 +571,7 @@ export async function deleteTitles(ids: number[], block: boolean): Promise<{ del
     if (error) throw new Error(error.message);
     deleted += count ?? 0;
   }
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   revalidatePath("/admin");
   return { deleted };
 }
