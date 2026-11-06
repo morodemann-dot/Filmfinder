@@ -1,0 +1,9 @@
+SELECT ?tmdb ?imdb ?awardLabel ?date ?pub WHERE {
+  VALUES ?award { wd:Q179808 wd:Q209459 wd:Q154590 }
+  ?film p:P166 ?st . ?st ps:P166 ?award .
+  ?film wdt:P4947 ?tmdb .
+  OPTIONAL { ?film wdt:P345 ?imdb . }
+  OPTIONAL { ?st pq:P585 ?date . }
+  OPTIONAL { ?film wdt:P577 ?pub . }
+  ?award rdfs:label ?awardLabel . FILTER(LANG(?awardLabel) = "en")
+}

@@ -37,6 +37,8 @@ create table if not exists public.titles (
   cast_names        text[] not null default '{}',   -- Hauptbesetzung
   oscars            text[] not null default '{}',   -- gewonnene Oscar-Kategorien (seit 1980)
   globes            text[] not null default '{}',   -- gewonnene Golden-Globe-Kategorien
+  festivals         text[] not null default '{}',   -- Festival-/BAFTA-Gewinne
+  canon             text[] not null default '{}',   -- Kritiker-Kanon (Criterion, National Film Registry)
   kept_at           timestamptz,                      -- beim Aussortieren geprüft & behalten
   metadata_source   text not null default 'tmdb',
   fetched_at        timestamptz not null default now(),  -- TMDB: max. 6 Monate speichern, dann auffrischen
@@ -161,3 +163,29 @@ create table if not exists public.excluded_titles (
   primary key (media_type, tmdb_id)
 );
 alter table public.excluded_titles enable row level security;
+
+-- Zentrale Regeln für alle Importe (genau eine Zeile)
+create table if not exists public.catalog_settings (
+  id            integer primary key default 1 check (id = 1),
+  min_rating    real    not null default 6.3,
+  min_votes     integer not null default 1500,
+  series_exempt boolean not null default true,  -- Filmreihen dürfen schwächere Teile enthalten
+  updated_at    timestamptz not null default now()
+);
+insert into public.catalog_settings (id) values (1) on conflict (id) do nothing;
+alter table public.catalog_settings enable row level security;
+
+-- Vorschau: neue Kandidaten warten hier, bis sie angenommen oder abgelehnt werden
+create table if not exists public.import_candidates (
+  id         bigint generated always as identity primary key,
+  media_type text not null,
+  tmdb_id    integer not null,
+  row        jsonb not null,           -- alle Filmdaten, fertig für den Katalog
+  source     text,                     -- z. B. "Festival-Gewinner"
+  status     text not null default 'offen' check (status in ('offen', 'angenommen', 'abgelehnt')),
+  created_at timestamptz not null default now(),
+  unique (media_type, tmdb_id)
+);
+create index if not exists import_candidates_status_idx on public.import_candidates (status, created_at desc);
+alter table public.import_candidates enable row level security;
+

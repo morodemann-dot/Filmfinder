@@ -395,3 +395,15 @@ html, body { overflow-x: clip; }
    damit iOS die Leiste auch bei kurzen Seiten (z. B. Bewerten) nicht verschiebt ---------- */
 html, body { min-height: 100%; background: var(--bg); }
 .shell { min-height: 100vh; min-height: 100lvh; }
+
+/* Hinweis: neue Kandidaten warten */
+.waiting-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; margin-bottom: 14px; border-radius: var(--radius);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 30%, var(--surface)), var(--surface));
+}
+.waiting-cta { color: var(--accent); font-weight: 700; white-space: nowrap; }
+details > summary { list-style: none; }
+/* Häkchen immer links neben dem Text */
+label.row.small { flex-wrap: nowrap; align-items: flex-start; }
+label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }

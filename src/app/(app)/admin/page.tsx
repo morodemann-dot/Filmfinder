@@ -4,6 +4,9 @@ import AddPanel from "./AddPanel";
 import CatalogManager, { type ManageTitle } from "./CatalogManager";
 import Curate from "./Curate";
 import Suspects from "./Suspects";
+import Review from "./Review";
+import { SettingsPanel } from "./SourceForms";
+import { DEFAULT_SETTINGS, getCatalogSettings } from "@/lib/importer";
 import { clearBlocklist, unblockTitle } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
@@ -12,7 +15,7 @@ import { fetchAll } from "@/lib/fetchAll";
 export const maxDuration = 60;
 
 // Katalog: nur für Admins (E-Mail steht in ADMIN_EMAILS).
-// Zwei Bereiche: "Hinzufügen" und "Verwalten".
+// Bereiche: Hinzufügen (mit "Neu prüfen"), Aussortieren, Verdachtsfälle, Verwalten.
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ bereich?: string }> }) {
   const user = await getUser();
   if (!isAdmin(user?.email)) notFound();
@@ -20,15 +23,20 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const manage = bereich === "verwalten";
   const curate = bereich === "aussortieren";
   const suspects = bereich === "verdacht";
+  const review = bereich === "pruefen";
+  const add = !manage && !curate && !suspects && !review;
 
   const admin = createAdminClient();
-  const [movies, shows, blocked] = await Promise.all([
+  const [movies, shows, blocked, waiting] = await Promise.all([
     admin.from("titles").select("id", { count: "exact", head: true }).eq("media_type", "movie"),
     admin.from("titles").select("id", { count: "exact", head: true }).eq("media_type", "tv"),
     admin.from("excluded_titles").select("tmdb_id", { count: "exact", head: true }),
+    admin.from("import_candidates").select("id", { count: "exact", head: true }).eq("status", "offen"),
   ]);
+  const waitingCount = waiting.error ? 0 : (waiting.count ?? 0);
+  const settings = add ? await getCatalogSettings().catch(() => DEFAULT_SETTINGS) : DEFAULT_SETTINGS;
 
-  const genreRows = curate || suspects ? (await admin.from("titles").select("genres").limit(5000)).data ?? [] : [];
+  const genreRows = curate || suspects || review ? (await admin.from("titles").select("genres").limit(5000)).data ?? [] : [];
   const genres = [...new Set(genreRows.flatMap((r) => r.genres as string[]))].sort((a, b) => a.localeCompare(b, "de"));
 
   const blockedList = manage
@@ -50,13 +58,19 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       </p>
 
       <div className="segmented four" style={{ margin: "14px 0 20px", maxWidth: 520 }}>
-        <Link href="/admin" aria-pressed={!manage && !curate && !suspects} className="seg-link">Hinzufügen</Link>
+        <Link href="/admin" aria-pressed={add || review} className="seg-link">Hinzufügen</Link>
         <Link href="/admin?bereich=aussortieren" aria-pressed={curate} className="seg-link">Aussortieren</Link>
         <Link href="/admin?bereich=verdacht" aria-pressed={suspects} className="seg-link">Verdachtsfälle</Link>
         <Link href="/admin?bereich=verwalten" aria-pressed={manage} className="seg-link">Verwalten</Link>
       </div>
 
-      {curate ? (
+      {review ? (
+        <>
+          <Link href="/admin" className="caption">‹ Zurück zu Hinzufügen</Link>
+          <h2 style={{ marginTop: 10 }}>Neu prüfen</h2>
+          <Review genres={genres} initialCount={waitingCount} />
+        </>
+      ) : curate ? (
         <Curate genres={genres} />
       ) : suspects ? (
         <Suspects genres={genres} />
@@ -90,7 +104,16 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           )}
         </>
       ) : (
-        <AddPanel />
+        <>
+          {waitingCount > 0 && (
+            <Link href="/admin?bereich=pruefen" className="waiting-banner">
+              <span><strong>{waitingCount} neue Filme</strong> warten auf deine Prüfung</span>
+              <span className="waiting-cta">Jetzt prüfen ›</span>
+            </Link>
+          )}
+          <SettingsPanel settings={settings} />
+          <AddPanel />
+        </>
       )}
     </>
   );

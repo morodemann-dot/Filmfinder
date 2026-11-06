@@ -2,6 +2,8 @@
 // Hinweis: "This product uses the TMDB API but is not endorsed or certified by TMDB."
 
 import awardsData from "@/data/awards.json";
+import festivalData from "@/data/festivals.json";
+import canonData from "@/data/canon.json";
 
 const BASE = "https://api.themoviedb.org/3";
 export const IMG = "https://image.tmdb.org/t/p";
@@ -120,6 +122,15 @@ const SERIES_STATUS: Record<string, string> = {
 export type AwardFilm = { tmdb: number; imdb: string | null; year: number | null; oscars: string[]; globes: string[] };
 export const AWARD_FILMS = awardsData as AwardFilm[];
 const AWARDS_BY_TMDB = new Map(AWARD_FILMS.map((a) => [a.tmdb, a]));
+
+// Festival- und BAFTA-Gewinner seit 1980 sowie Kritiker-Kanon (Criterion Collection, National Film Registry).
+// Quelle: Wikidata (CC0).
+export type FestivalFilm = { tmdb: number; year: number | null; awards: string[] };
+export type CanonFilm = { tmdb: number; year: number | null; lists: string[] };
+export const FESTIVAL_FILMS = festivalData as FestivalFilm[];
+export const CANON_FILMS = canonData as CanonFilm[];
+const FESTIVALS_BY_TMDB = new Map(FESTIVAL_FILMS.map((a) => [a.tmdb, a.awards]));
+const CANON_BY_TMDB = new Map(CANON_FILMS.map((a) => [a.tmdb, a.lists]));
 export function isShortOnly(a: AwardFilm) {
   return a.globes.length === 0 && a.oscars.length > 0 && a.oscars.every((o) => /short/i.test(o));
 }
@@ -171,6 +182,8 @@ export async function fetchTitleRow(type: MediaType, id: number) {
     imdb_id: type === "movie" ? (d.imdb_id ?? null) : null,
     oscars: type === "movie" ? (AWARDS_BY_TMDB.get(d.id)?.oscars ?? []) : [],
     globes: type === "movie" ? (AWARDS_BY_TMDB.get(d.id)?.globes ?? []) : [],
+    festivals: type === "movie" ? (FESTIVALS_BY_TMDB.get(d.id) ?? []) : [],
+    canon: type === "movie" ? (CANON_BY_TMDB.get(d.id) ?? []) : [],
     metadata_source: "tmdb",
     fetched_at: new Date().toISOString(),
   };
@@ -337,4 +350,55 @@ export async function actorMovies(name: string, minVotes: number, onlyLead: bool
     ),
   ];
   return { person: person.name, ids };
+}
+
+// ---------------- Weitere Quellen ----------------
+
+// TMDB-Filmgenres (feste IDs, deutsche Namen)
+export const MOVIE_GENRES: Record<number, string> = {
+  28: "Action", 12: "Abenteuer", 16: "Animation", 35: "Komödie", 80: "Krimi", 99: "Dokumentarfilm",
+  18: "Drama", 10751: "Familie", 14: "Fantasy", 36: "Historie", 27: "Horror", 10402: "Musik",
+  9648: "Mystery", 10749: "Liebesfilm", 878: "Science Fiction", 53: "Thriller", 10752: "Kriegsfilm", 37: "Western",
+};
+
+// Beste Filme nach Kriterien (sortiert nach Bewertung, nicht nach Beliebtheit)
+export async function discoverBest(p: {
+  genre?: number; decade?: DecadeKey; keyword?: number; company?: number; region?: "west" | "welt";
+  minRating: number; minVotes: number; page: number; sort?: "rating" | "votes";
+}) {
+  const params: Record<string, string> = {
+    sort_by: p.sort === "votes" ? "vote_count.desc" : "vote_average.desc",
+    "vote_count.gte": String(p.minVotes),
+    "vote_average.gte": String(p.minRating),
+    "primary_release_date.gte": p.decade ? DECADES[p.decade].from : "1980-01-01",
+    "primary_release_date.lte": p.decade ? DECADES[p.decade].to : today(),
+    include_adult: "false",
+    page: String(p.page),
+  };
+  if (p.genre) params.with_genres = String(p.genre);
+  if (p.keyword) params.with_keywords = String(p.keyword);
+  if (p.company) params.with_companies = String(p.company);
+  if (p.region === "west") params.with_origin_country = "US|GB|CA|AU|IE|NZ|FR|DE|ES|IT|DK|SE|NO";
+  const d = await tmdb<DiscoverResult>("/discover/movie", params);
+  return { ids: d.results.map((r) => r.id), totalPages: d.total_pages, total: d.total_results };
+}
+
+// Stichwort suchen (z. B. "heist", "time travel")
+export async function findKeyword(query: string) {
+  const r = await tmdb<{ results: { id: number; name: string }[] }>("/search/keyword", { query });
+  const q = query.toLowerCase().trim();
+  return r.results.find((k) => k.name.toLowerCase() === q) ?? r.results[0] ?? null;
+}
+
+// Produktionsfirma suchen (z. B. "A24")
+export async function findCompany(query: string) {
+  const r = await tmdb<{ results: { id: number; name: string; origin_country?: string }[] }>("/search/company", { query });
+  const q = query.toLowerCase().trim();
+  return r.results.find((c) => c.name.toLowerCase() === q) ?? r.results[0] ?? null;
+}
+
+// Von TMDB empfohlene ähnliche Filme
+export async function recommendations(tmdbId: number) {
+  const r = await tmdb<{ results: { id: number }[] }>(`/movie/${tmdbId}/recommendations`, { page: "1" });
+  return r.results.map((x) => x.id);
 }

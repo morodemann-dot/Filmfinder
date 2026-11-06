@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import RefreshButton from "@/components/RefreshButton";
+import { StageCheckbox } from "./SourceForms";
 import {
   completeCollections,
   importActor,
@@ -65,6 +66,7 @@ export function HollywoodForm() {
           <input id="pages" name="pages" type="number" min={1} max={5} defaultValue={5} className="input" />
         </div>
       </div>
+      <StageCheckbox />
       <button className="btn primary" disabled={pending} style={{ width: "100%" }}>
         {pending ? "Importiere … (bis zu 1 Minute)" : "Importieren"}
       </button>
@@ -90,6 +92,7 @@ export function DirectorForm() {
         <label htmlFor="dminVotes">Mindestens so viele Bewertungen bei TMDB</label>
         <input id="dminVotes" name="minVotes" type="number" min={0} step={50} defaultValue={300} className="input" />
       </div>
+      <StageCheckbox />
       <button className="btn primary" disabled={pending} style={{ width: "100%" }}>
         {pending ? "Importiere …" : "Filme hinzufügen"}
       </button>
@@ -120,6 +123,7 @@ export function FranchiseForm() {
         <label htmlFor="fminVotes">Bei Stichwort-Suche: mindestens so viele Bewertungen</label>
         <input id="fminVotes" name="minVotes" type="number" min={0} step={50} defaultValue={300} className="input" />
       </div>
+      <StageCheckbox />
       <button className="btn primary" disabled={pending} style={{ width: "100%" }}>
         {pending ? "Importiere … (bis zu 1 Minute)" : "Franchise hinzufügen"}
       </button>
@@ -237,6 +241,7 @@ export function ActorForm() {
         <label htmlFor="aminVotes">Mindestens so viele Bewertungen bei TMDB</label>
         <input id="aminVotes" name="minVotes" type="number" min={0} step={50} defaultValue={500} className="input" />
       </div>
+      <StageCheckbox />
       <button className="btn primary" disabled={pending} style={{ width: "100%" }}>
         {pending ? "Importiere …" : "Filme hinzufügen"}
       </button>

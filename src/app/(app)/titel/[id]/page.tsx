@@ -102,6 +102,12 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
             )}
           </div>
         )}
+        {((title.festivals?.length ?? 0) > 0 || (title.canon?.length ?? 0) > 0) && (
+          <div className="small" style={{ marginBottom: 12 }}>
+            {(title.festivals?.length ?? 0) > 0 && <div>🎖 {title.festivals!.join(", ")}</div>}
+            {(title.canon?.length ?? 0) > 0 && <div className="muted">📚 {title.canon!.join(", ")}</div>}
+          </div>
+        )}
         {title.overview && <p style={{ lineHeight: 1.55 }}>{title.overview}</p>}
 
         <FeedbackControls

@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { excludedOrigin, originOrFilterParts } from "@/lib/origin";
+import { EMPTY_RESULT, addResults, importMovieIds, summary } from "@/lib/importer";
 import {
   AWARD_FILMS,
   actorMovies,
@@ -21,8 +22,6 @@ import {
   discoverHollywood,
   fetchListIds,
   fetchTitleRow,
-  hasMajorStudio,
-  isNetflix,
   mapLimit,
   type DecadeKey,
   type ImportListKey,
@@ -160,48 +159,12 @@ export async function importList(_: FormState, formData: FormData): Promise<Form
   };
 }
 
-// Holt Details zu vielen Filmen, sortiert Netflix (und optional kleine Studios) aus und speichert.
-async function importMovieIds(ids: number[], onlyMajor: boolean) {
-  const admin = createAdminClient();
-  // Filme auf der Sperrliste (bewusst entfernt) nicht wieder importieren
-  const { data: blocked } = ids.length
-    ? await admin.from("excluded_titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", ids)
-    : { data: [] };
-  const blockedSet = new Set((blocked ?? []).map((b) => b.tmdb_id as number));
-  ids = ids.filter((x) => !blockedSet.has(x));
-  const results = await mapLimit(ids, 8, (id) => fetchTitleRow("movie", id));
-  let failed = 0, netflix = 0, small = 0, origin = 0;
-  const rows: Awaited<ReturnType<typeof fetchTitleRow>>[] = [];
-  for (const r of results) {
-    if (r.status !== "fulfilled") { failed++; continue; }
-    if (isNetflix(r.value.studios)) { netflix++; continue; }
-    // Chinesische, russische, indische Produktionen nicht aufnehmen (Ausnahme: Preisträger)
-    const awarded = r.value.oscars.length + r.value.globes.length > 0;
-    if (!awarded && excludedOrigin(r.value)) { origin++; continue; }
-    if (onlyMajor && !hasMajorStudio(r.value.studios)) { small++; continue; }
-    rows.push(r.value);
-  }
-  if (rows.length) {
-    const { error } = await admin.from("titles").upsert(rows, { onConflict: "media_type,tmdb_id" });
-    if (error) throw new Error(error.message);
-  }
-  return { ok: rows.length, failed, netflix, small, origin };
-}
-
 async function catalogMovieCount() {
   const { count } = await createAdminClient()
     .from("titles").select("id", { count: "exact", head: true }).eq("media_type", "movie");
   return count ?? 0;
 }
 
-function summary(s: { ok: number; failed: number; netflix: number; small: number; origin?: number }) {
-  const parts = [`${s.ok} Filme übernommen`];
-  if (s.netflix) parts.push(`${s.netflix} Netflix-Filme aussortiert`);
-  if (s.origin) parts.push(`${s.origin} Filme wegen Herkunft übersprungen`);
-  if (s.small) parts.push(`${s.small} ohne großes Studio aussortiert`);
-  if (s.failed) parts.push(`${s.failed} fehlgeschlagen`);
-  return parts.join(", ");
-}
 
 // Hollywood-Filme eines Jahrzehnts importieren. Nur für Admins.
 export async function importHollywood(_: FormState, formData: FormData): Promise<FormState> {
@@ -212,10 +175,11 @@ export async function importHollywood(_: FormState, formData: FormData): Promise
   if (!(decade in DECADES)) return { error: "Unbekanntes Jahrzehnt." };
   const minVotes = Math.max(0, Number(formData.get("minVotes")) || 0);
   const onlyMajor = formData.get("onlyMajor") === "on";
+  const stage = formData.get("vorschau") === "on";
   const from = Math.max(1, Number(formData.get("from")) || 1);
   const pages = Math.min(5, Math.max(1, Number(formData.get("pages")) || 1));
 
-  const total = { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
+  let total = { ...EMPTY_RESULT };
   let lastPage = from - 1;
   let totalPages = 0;
   try {
@@ -223,8 +187,8 @@ export async function importHollywood(_: FormState, formData: FormData): Promise
       const d = await discoverHollywood(decade, minVotes, p);
       totalPages = d.totalPages;
       if (p > d.totalPages || d.ids.length === 0) break;
-      const r = await importMovieIds(d.ids, onlyMajor);
-      total.ok += r.ok; total.failed += r.failed; total.netflix += r.netflix; total.small += r.small; total.origin += r.origin;
+      const r = await importMovieIds(d.ids, { onlyMajor, stage, source: `Hollywood ${DECADES[decade].label}` });
+      total = addResults(total, r);
       lastPage = p;
     }
   } catch (e) {
@@ -246,12 +210,13 @@ export async function importDirector(_: FormState, formData: FormData): Promise<
   const name = String(formData.get("name") ?? "").trim();
   if (name.length < 2) return { error: "Bitte einen Namen eingeben." };
   const minVotes = Math.max(0, Number(formData.get("minVotes")) || 0);
+  const stage = formData.get("vorschau") === "on";
 
   try {
     const found = await directorMovies(name, minVotes);
     if (!found) return { error: `Niemand gefunden für „${name}“.` };
     if (found.ids.length === 0) return { error: `${found.person}: keine passenden Filme ab 1980 gefunden.` };
-    const r = await importMovieIds(found.ids.slice(0, 60), false);
+    const r = await importMovieIds(found.ids.slice(0, 60), { stage, source: `Regie: ${found.person}` });
     revalidatePath("/", "layout");
     return { message: `${found.person}: ${summary(r)}. Filme im Katalog: ${await catalogMovieCount()}.` };
   } catch (e) {
@@ -307,7 +272,7 @@ export async function completeCollections(): Promise<FormState> {
   if (open.size === 0) return { message: "Alle Filmreihen im Katalog sind vollständig. 👍" };
 
   const batch = [...open.entries()].slice(0, 10);
-  const total = { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
+  let total = { ...EMPTY_RESULT };
   const processed: { id: number; name: string }[] = [];
   try {
     for (const [id, name] of batch) {
@@ -315,8 +280,8 @@ export async function completeCollections(): Promise<FormState> {
       const have = await existingMovieIds(parts.ids);
       const missing = parts.ids.filter((x) => !have.has(x));
       if (missing.length) {
-        const r = await importMovieIds(missing, false);
-        total.ok += r.ok; total.failed += r.failed; total.netflix += r.netflix; total.origin += r.origin;
+        const r = await importMovieIds(missing, { series: true });
+        total = addResults(total, r);
       }
       processed.push({ id, name: parts.name || name });
     }
@@ -342,6 +307,7 @@ export async function importFranchise(_: FormState, formData: FormData): Promise
   const name = String(formData.get("name") ?? "").trim();
   if (name.length < 2) return { error: "Bitte einen Namen eingeben." };
   const useKeyword = formData.get("useKeyword") === "on";
+  const stage = formData.get("vorschau") === "on";
   const minVotes = Math.max(0, Number(formData.get("minVotes")) || 0);
 
   try {
@@ -367,7 +333,7 @@ export async function importFranchise(_: FormState, formData: FormData): Promise
 
     const have = await existingMovieIds([...ids]);
     const missing = [...ids].filter((x) => !have.has(x)).slice(0, 70);
-    const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
+    const r = missing.length ? await importMovieIds(missing, { series: true, stage, source: `Franchise: ${name}` }) : EMPTY_RESULT;
     await markCollectionsChecked(collections.map((c, i) => ({ id: c.id, name: names[i] ?? c.name })));
     revalidatePath("/", "layout");
 
@@ -560,7 +526,7 @@ export async function importAwardsChunk(offset: number, includeShorts: boolean):
 
   // Neue Filme holen (Netflix wird aussortiert, Studio-Filter gilt hier nicht)
   const missing = ids.filter((x) => !have.has(x));
-  const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
+  const r = missing.length ? await importMovieIds(missing) : EMPTY_RESULT;
 
   const next = offset + chunk.length;
   return {
@@ -579,6 +545,7 @@ export async function importActor(_: FormState, formData: FormData): Promise<For
   if (name.length < 2) return { error: "Bitte einen Namen eingeben." };
   const minVotes = Math.max(0, Number(formData.get("minVotes")) || 0);
   const onlyLead = formData.get("onlyLead") === "on";
+  const stage = formData.get("vorschau") === "on";
 
   try {
     const found = await actorMovies(name, minVotes, onlyLead);
@@ -586,7 +553,7 @@ export async function importActor(_: FormState, formData: FormData): Promise<For
     if (found.ids.length === 0) return { error: `${found.person}: keine passenden Filme ab 1980 gefunden.` };
     const have = await existingMovieIds(found.ids);
     const missing = found.ids.filter((x) => !have.has(x)).slice(0, 60);
-    const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
+    const r = missing.length ? await importMovieIds(missing, { stage, source: `Schauspiel: ${found.person}` }) : EMPTY_RESULT;
     revalidatePath("/", "layout");
     return {
       message: `${found.person}: ${found.ids.length} passende Filme, ${have.size} waren schon im Katalog, ${summary(r)}. Filme im Katalog: ${await catalogMovieCount()}.`,
@@ -644,6 +611,7 @@ export type CurationCard = {
   popularity: number | null; runtime_seconds: number | null; oscars: string[] | null; globes: string[] | null;
   vote_average: number | null; vote_count: number | null;
   original_language: string | null; countries: string[] | null;
+  source?: string | null; // nur bei Import-Kandidaten
 };
 
 const CURATION_COLS =
@@ -703,7 +671,7 @@ export async function restoreTitle(mediaType: string, tmdbId: number) {
   if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
   const admin = createAdminClient();
   await admin.from("excluded_titles").delete().eq("media_type", mediaType).eq("tmdb_id", tmdbId);
-  if (mediaType === "movie") await importMovieIds([tmdbId], false);
+  if (mediaType === "movie") await importMovieIds([tmdbId], { gate: false });
   else {
     const row = await fetchTitleRow("tv", tmdbId);
     await admin.from("titles").upsert(row, { onConflict: "media_type,tmdb_id" });

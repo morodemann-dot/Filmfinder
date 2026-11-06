@@ -1,0 +1,13 @@
+SELECT ?tmdb ?src ?pub WHERE {
+  {
+    ?film wdt:P1343 ?s . VALUES ?s { wd:Q929091 wd:Q126698144 } BIND("1001 Filme" AS ?src)
+  } UNION {
+    ?film wdt:P166 wd:Q823422 . BIND("National Film Registry" AS ?src)
+  } UNION {
+    ?film (wdt:P1343|wdt:P361|wdt:P179) wd:Q620121 . BIND("AFI 100" AS ?src)
+  } UNION {
+    ?film wdt:P12279 ?spine . BIND("Criterion Collection" AS ?src)
+  }
+  ?film wdt:P4947 ?tmdb .
+  OPTIONAL { ?film wdt:P577 ?pub . }
+}

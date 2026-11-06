@@ -1,0 +1,10 @@
+SELECT ?tmdb ?imdb ?awardLabel ?date ?pub WHERE {
+  { ?film p:P166 ?st . ?st ps:P166 ?award . }
+  UNION
+  { ?person p:P166 ?st . ?st ps:P166 ?award ; pq:P1686 ?film . }
+  ?film wdt:P4947 ?tmdb .
+  ?award rdfs:label ?awardLabel . FILTER(LANG(?awardLabel) = "en" && STRSTARTS(?awardLabel, "BAFTA Award for Best"))
+  OPTIONAL { ?film wdt:P345 ?imdb . }
+  OPTIONAL { ?st pq:P585 ?date . }
+  OPTIONAL { ?film wdt:P577 ?pub . }
+}

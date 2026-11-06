@@ -11,10 +11,12 @@ import {
   type CurationCard,
   type CurationFilter,
 } from "@/app/actions";
+import { acceptCandidate, getCandidateBatch, rejectCandidate } from "@/app/catalog-actions";
 import { awardDe, formatRuntime, formatVotes } from "@/lib/types";
 import { excludedOrigin } from "@/lib/origin";
 
 // Aussortieren im Tinder-Stil: rechts = behalten, links = entfernen.
+// Im Modus "candidates" (Vorschau neuer Filme): rechts = in den Katalog, links = ablehnen.
 
 const DECADES = [1980, 1990, 2000, 2010, 2020];
 const ORDERS = { unbekannt: "Unbekannteste zuerst", schwach: "Schwächste zuerst", zufall: "Zufällig", neu: "Zuletzt hinzugefügt" } as const;
@@ -25,12 +27,20 @@ type Done = { card: CurationCard; action: "keep" | "remove" };
 export default function Curate({
   genres,
   suspect,
+  mode = "titles",
+  onDone,
 }: {
   genres: string[];
   suspect?: { minRating: number; minVotes: number }; // gesetzt = nur Verdachtsfälle zeigen
+  mode?: "titles" | "candidates";
+  onDone?: () => void; // wird aufgerufen, wenn sich etwas geändert hat (z. B. Zähler aktualisieren)
 }) {
+  const cand = mode === "candidates";
+  const KEEP = cand ? "REIN" : "BEHALTEN";
   const [filter, setFilter] = useState<CurationFilter>(
-    suspect ? { order: "schwach", minRating: suspect.minRating, minVotes: suspect.minVotes } : { order: "unbekannt" },
+    mode === "candidates"
+      ? { order: "neu" }
+      : suspect ? { order: "schwach", minRating: suspect.minRating, minVotes: suspect.minVotes } : { order: "unbekannt" },
   );
   const [showFilter, setShowFilter] = useState(false);
   const [cards, setCards] = useState<CurationCard[]>([]);
@@ -60,7 +70,7 @@ export default function Curate({
     setLoading(true);
     setError(null);
     try {
-      const r = await getCurationBatch(f, [...handled.current]);
+      const r = cand ? await getCandidateBatch(f, [...handled.current]) : await getCurationBatch(f, [...handled.current]);
       if (gen !== generation.current) return; // veraltete Antwort (Filter wurde inzwischen geändert)
       setCards((prev) => {
         const base = replace ? [] : prev;
@@ -86,7 +96,7 @@ export default function Curate({
         setLoading(false);
       }
     }
-  }, []);
+  }, [cand]);
 
   // Beim Start und wenn sich Filter ändern: neu laden
   useEffect(() => { void Promise.resolve().then(() => load(filter, true)); }, [filter, load]);
@@ -113,7 +123,10 @@ export default function Curate({
     setRemaining((r) => (r ? r - 1 : r));
     setHistory((h) => [...h.slice(-19), { card: c, action }]);
     setStats((s) => ({ ...s, [action]: s[action] + 1 }));
-    (action === "keep" ? keepTitle(c.id, true) : removeForCuration(c.id)).catch((e) =>
+    const job = cand
+      ? (action === "keep" ? acceptCandidate(c.id, true) : rejectCandidate(c.id, true))
+      : (action === "keep" ? keepTitle(c.id, true) : removeForCuration(c.id));
+    job.then(() => onDone?.()).catch((e) =>
       setError(`„${c.title}“: ${e instanceof Error ? e.message : String(e)}`),
     );
   }
@@ -125,7 +138,14 @@ export default function Curate({
     setStats((s) => ({ ...s, [last.action]: Math.max(0, s[last.action] - 1) }));
     handled.current.delete(last.card.id);
     try {
-      if (last.action === "keep") {
+      if (cand) {
+        // Kandidaten behalten ihre ID – einfach zurück auf den Stapel
+        setEntering({ id: last.card.id, dir: last.action === "keep" ? 1 : -1 });
+        setCards((prev) => [last.card, ...prev]);
+        if (last.action === "keep") await acceptCandidate(last.card.id, false);
+        else await rejectCandidate(last.card.id, false);
+        onDone?.();
+      } else if (last.action === "keep") {
         setEntering({ id: last.card.id, dir: 1 });
         setCards((prev) => [last.card, ...prev]);
         await keepTitle(last.card.id, false);
@@ -187,7 +207,7 @@ export default function Curate({
           Kategorien {activeFilters > 0 && <span className="count">{activeFilters}</span>}
         </button>
         <span className="caption" style={{ marginLeft: "auto" }}>
-          {remaining !== null && `${remaining} ${suspect ? "Verdachtsfälle" : "ungeprüft"}`}
+          {remaining !== null && `${remaining} ${cand ? "Kandidaten" : suspect ? "Verdachtsfälle" : "ungeprüft"}`}
         </span>
       </div>
 
@@ -247,7 +267,7 @@ export default function Curate({
               >
                 {i === 0 && (
                   <>
-                    <div className="stamp keep" style={{ opacity: Math.max(0, Math.min(1, dx / THRESHOLD)) }}>BEHALTEN</div>
+                    <div className="stamp keep" style={{ opacity: Math.max(0, Math.min(1, dx / THRESHOLD)) }}>{KEEP}</div>
                     <div className="stamp remove" style={{ opacity: Math.max(0, Math.min(1, -dx / THRESHOLD)) }}>RAUS</div>
                   </>
                 )}
@@ -259,10 +279,10 @@ export default function Curate({
           <div className="empty" style={{ paddingTop: 80 }}>
             {loading ? "Lade …" : (
               <>
-                <p>Alles geprüft{activeFilters > 0 ? " in dieser Kategorie" : ""}. 🎉</p>
-                <form action={async () => { await resetCuration(); load(filter, true); }}>
+                <p>{cand ? "Keine neuen Kandidaten mehr" : "Alles geprüft"}{activeFilters > 0 ? " in dieser Kategorie" : ""}. 🎉</p>
+                {!cand && <form action={async () => { await resetCuration(); load(filter, true); }}>
                   <button className="btn">Von vorn beginnen</button>
-                </form>
+                </form>}
               </>
             )}
           </div>
@@ -281,7 +301,7 @@ export default function Curate({
             aria-hidden
           >
             <div className={`stamp ${f.dir === 1 ? "keep" : "remove"}`} style={{ opacity: 1 }}>
-              {f.dir === 1 ? "BEHALTEN" : "RAUS"}
+              {f.dir === 1 ? KEEP : "RAUS"}
             </div>
             <CardFace card={f.card} />
           </div>
@@ -294,7 +314,9 @@ export default function Curate({
         <button className="round keep" onClick={() => decide("keep")} disabled={!card} aria-label="Behalten">✓</button>
       </div>
       <div className="caption" style={{ textAlign: "center", marginTop: 8 }}>
-        Diese Runde: {stats.keep} behalten · {stats.remove} entfernt · Entfernte kommen auf die Sperrliste
+        {cand
+          ? <>Diese Runde: {stats.keep} übernommen · {stats.remove} abgelehnt · Abgelehnte kommen auf die Sperrliste</>
+          : <>Diese Runde: {stats.keep} behalten · {stats.remove} entfernt · Entfernte kommen auf die Sperrliste</>}
       </div>
       {error && <p className="error" style={{ textAlign: "center" }}>{error}</p>}
     </div>
@@ -312,6 +334,7 @@ function CardFace({ card }: { card: CurationCard }) {
           {[card.media_type === "tv" ? "Serie" : null, card.release_year, formatRuntime(card.runtime_seconds), card.genres.slice(0, 3).join(", ")]
             .filter(Boolean).join(" · ")}
         </div>
+        {card.source && <div className="caption" style={{ marginTop: 4 }}>Quelle: {card.source}</div>}
         {excludedOrigin(card) && <div className="suspect-why" style={{ marginTop: 6 }}>⚠︎ {excludedOrigin(card)}</div>}
         {formatVotes(card.vote_average, card.vote_count) && (
           <div className="small" style={{ marginTop: 6 }}><span className="muted">TMDB:</span> {formatVotes(card.vote_average, card.vote_count)}</div>

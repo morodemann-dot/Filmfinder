@@ -24,6 +24,8 @@ export type Title = {
   collection_name: string | null;
   imdb_id?: string | null;
   oscars?: string[] | null;
+  festivals?: string[] | null;
+  canon?: string[] | null;
   cast_names?: string[] | null;
   globes?: string[] | null;
 };
