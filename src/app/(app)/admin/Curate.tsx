@@ -21,8 +21,16 @@ const THRESHOLD = 90; // so weit (in Pixeln) muss man wischen
 
 type Done = { card: CurationCard; action: "keep" | "remove" };
 
-export default function Curate({ genres }: { genres: string[] }) {
-  const [filter, setFilter] = useState<CurationFilter>({ order: "unbekannt" });
+export default function Curate({
+  genres,
+  suspect,
+}: {
+  genres: string[];
+  suspect?: { minRating: number; minVotes: number }; // gesetzt = nur Verdachtsfälle zeigen
+}) {
+  const [filter, setFilter] = useState<CurationFilter>(
+    suspect ? { order: "schwach", minRating: suspect.minRating, minVotes: suspect.minVotes } : { order: "unbekannt" },
+  );
   const [showFilter, setShowFilter] = useState(false);
   const [cards, setCards] = useState<CurationCard[]>([]);
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -178,7 +186,7 @@ export default function Curate({ genres }: { genres: string[] }) {
           Kategorien {activeFilters > 0 && <span className="count">{activeFilters}</span>}
         </button>
         <span className="caption" style={{ marginLeft: "auto" }}>
-          {remaining !== null && `${remaining} ungeprüft`}
+          {remaining !== null && `${remaining} ${suspect ? "Verdachtsfälle" : "ungeprüft"}`}
         </span>
       </div>
 

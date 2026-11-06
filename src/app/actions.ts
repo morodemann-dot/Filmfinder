@@ -617,7 +617,11 @@ export async function clearBlocklist(): Promise<void> {
 
 // ---------------- Aussortieren (Tinder-Stil) ----------------
 
-export type CurationFilter = { genre?: string; decade?: number; order?: "unbekannt" | "schwach" | "zufall" | "neu" };
+export type CurationFilter = {
+  genre?: string; decade?: number; order?: "unbekannt" | "schwach" | "zufall" | "neu";
+  // Nur Verdachtsfälle: Bewertung unter minRating ODER weniger Stimmen als minVotes
+  minRating?: number; minVotes?: number;
+};
 export type CurationCard = {
   id: number; tmdb_id: number; media_type: string; title: string; release_year: number | null; genres: string[];
   directors: string[] | null; cast_names: string[] | null; overview: string | null; poster_path: string | null;
@@ -640,6 +644,9 @@ export async function getCurationBatch(f: CurationFilter, skip: number[]): Promi
     if (f.decade) q = q.gte("release_year", f.decade).lt("release_year", f.decade + 10);
     // Preisgekrönte Filme werden beim Aussortieren grundsätzlich nicht gezeigt
     q = q.eq("oscars", "{}").eq("globes", "{}");
+    if (f.minRating != null && f.minVotes != null) {
+      q = q.not("vote_count", "is", null).or(`vote_average.lt.${Number(f.minRating)},vote_count.lt.${Math.round(Number(f.minVotes))}`);
+    }
     if (skip.length) q = q.not("id", "in", `(${skip.slice(-300).join(",")})`);
     return q;
   };

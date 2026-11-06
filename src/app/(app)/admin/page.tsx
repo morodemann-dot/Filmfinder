@@ -28,7 +28,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     admin.from("excluded_titles").select("tmdb_id", { count: "exact", head: true }),
   ]);
 
-  const genreRows = curate ? (await admin.from("titles").select("genres").limit(5000)).data ?? [] : [];
+  const genreRows = curate || suspects ? (await admin.from("titles").select("genres").limit(5000)).data ?? [] : [];
   const genres = [...new Set(genreRows.flatMap((r) => r.genres as string[]))].sort((a, b) => a.localeCompare(b, "de"));
 
   const blockedList = manage
@@ -59,7 +59,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       {curate ? (
         <Curate genres={genres} />
       ) : suspects ? (
-        <Suspects />
+        <Suspects genres={genres} />
       ) : manage ? (
         <>
           <CatalogManager titles={titles} />

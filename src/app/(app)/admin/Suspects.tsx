@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Poster from "@/components/Poster";
 import RefreshButton from "@/components/RefreshButton";
+import Curate from "./Curate";
 import { deleteTitles, getSuspects, keepTitle, type Suspect } from "@/app/actions";
 
 // Verdachtsfälle: die App schlägt Filme zum Aussortieren vor – du bestätigst.
-export default function Suspects() {
+export default function Suspects({ genres }: { genres: string[] }) {
+  const [mode, setMode] = useState<"liste" | "tindern">("liste");
   const [minRating, setMinRating] = useState(6.0);
   const [minVotes, setMinVotes] = useState(1000);
   const [list, setList] = useState<Suspect[] | null>(null);
@@ -101,6 +103,15 @@ export default function Suspects() {
         </div>
       </div>
 
+      <div className="segmented" style={{ maxWidth: 320, margin: "0 0 16px" }}>
+        <button aria-pressed={mode === "liste"} onClick={() => { setMode("liste"); load(minRating, minVotes); }}>Liste</button>
+        <button aria-pressed={mode === "tindern"} onClick={() => setMode("tindern")}>Tindern</button>
+      </div>
+
+      {mode === "tindern" ? (
+        <Curate key={`${minRating}-${minVotes}`} genres={genres} suspect={{ minRating, minVotes }} />
+      ) : (
+      <>
       {list && list.length > 0 && (
         <div className="toolbar">
           <span className="caption">{list.length} Verdachtsfälle{selected.size > 0 && ` · ${selected.size} ausgewählt`}</span>
@@ -157,6 +168,8 @@ export default function Suspects() {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
     </div>
   );
