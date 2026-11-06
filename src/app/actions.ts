@@ -6,6 +6,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabase/server";
+import { excludedOrigin } from "@/lib/origin";
 import {
   AWARD_FILMS,
   actorMovies,
@@ -169,11 +170,14 @@ async function importMovieIds(ids: number[], onlyMajor: boolean) {
   const blockedSet = new Set((blocked ?? []).map((b) => b.tmdb_id as number));
   ids = ids.filter((x) => !blockedSet.has(x));
   const results = await mapLimit(ids, 8, (id) => fetchTitleRow("movie", id));
-  let failed = 0, netflix = 0, small = 0;
+  let failed = 0, netflix = 0, small = 0, origin = 0;
   const rows: Awaited<ReturnType<typeof fetchTitleRow>>[] = [];
   for (const r of results) {
     if (r.status !== "fulfilled") { failed++; continue; }
     if (isNetflix(r.value.studios)) { netflix++; continue; }
+    // Chinesische, russische, indische Produktionen nicht aufnehmen (Ausnahme: Preisträger)
+    const awarded = r.value.oscars.length + r.value.globes.length > 0;
+    if (!awarded && excludedOrigin(r.value)) { origin++; continue; }
     if (onlyMajor && !hasMajorStudio(r.value.studios)) { small++; continue; }
     rows.push(r.value);
   }
@@ -181,7 +185,7 @@ async function importMovieIds(ids: number[], onlyMajor: boolean) {
     const { error } = await admin.from("titles").upsert(rows, { onConflict: "media_type,tmdb_id" });
     if (error) throw new Error(error.message);
   }
-  return { ok: rows.length, failed, netflix, small };
+  return { ok: rows.length, failed, netflix, small, origin };
 }
 
 async function catalogMovieCount() {
@@ -190,9 +194,10 @@ async function catalogMovieCount() {
   return count ?? 0;
 }
 
-function summary(s: { ok: number; failed: number; netflix: number; small: number }) {
+function summary(s: { ok: number; failed: number; netflix: number; small: number; origin?: number }) {
   const parts = [`${s.ok} Filme übernommen`];
   if (s.netflix) parts.push(`${s.netflix} Netflix-Filme aussortiert`);
+  if (s.origin) parts.push(`${s.origin} chin./russ./ind. Produktionen übersprungen`);
   if (s.small) parts.push(`${s.small} ohne großes Studio aussortiert`);
   if (s.failed) parts.push(`${s.failed} fehlgeschlagen`);
   return parts.join(", ");
@@ -210,7 +215,7 @@ export async function importHollywood(_: FormState, formData: FormData): Promise
   const from = Math.max(1, Number(formData.get("from")) || 1);
   const pages = Math.min(5, Math.max(1, Number(formData.get("pages")) || 1));
 
-  const total = { ok: 0, failed: 0, netflix: 0, small: 0 };
+  const total = { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
   let lastPage = from - 1;
   let totalPages = 0;
   try {
@@ -219,7 +224,7 @@ export async function importHollywood(_: FormState, formData: FormData): Promise
       totalPages = d.totalPages;
       if (p > d.totalPages || d.ids.length === 0) break;
       const r = await importMovieIds(d.ids, onlyMajor);
-      total.ok += r.ok; total.failed += r.failed; total.netflix += r.netflix; total.small += r.small;
+      total.ok += r.ok; total.failed += r.failed; total.netflix += r.netflix; total.small += r.small; total.origin += r.origin;
       lastPage = p;
     }
   } catch (e) {
@@ -302,7 +307,7 @@ export async function completeCollections(): Promise<FormState> {
   if (open.size === 0) return { message: "Alle Filmreihen im Katalog sind vollständig. 👍" };
 
   const batch = [...open.entries()].slice(0, 10);
-  const total = { ok: 0, failed: 0, netflix: 0, small: 0 };
+  const total = { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
   const processed: { id: number; name: string }[] = [];
   try {
     for (const [id, name] of batch) {
@@ -311,7 +316,7 @@ export async function completeCollections(): Promise<FormState> {
       const missing = parts.ids.filter((x) => !have.has(x));
       if (missing.length) {
         const r = await importMovieIds(missing, false);
-        total.ok += r.ok; total.failed += r.failed; total.netflix += r.netflix;
+        total.ok += r.ok; total.failed += r.failed; total.netflix += r.netflix; total.origin += r.origin;
       }
       processed.push({ id, name: parts.name || name });
     }
@@ -362,7 +367,7 @@ export async function importFranchise(_: FormState, formData: FormData): Promise
 
     const have = await existingMovieIds([...ids]);
     const missing = [...ids].filter((x) => !have.has(x)).slice(0, 70);
-    const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0 };
+    const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
     await markCollectionsChecked(collections.map((c, i) => ({ id: c.id, name: names[i] ?? c.name })));
     revalidatePath("/", "layout");
 
@@ -544,7 +549,7 @@ export async function importAwardsChunk(offset: number, includeShorts: boolean):
 
   // Neue Filme holen (Netflix wird aussortiert, Studio-Filter gilt hier nicht)
   const missing = ids.filter((x) => !have.has(x));
-  const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0 };
+  const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
 
   const next = offset + chunk.length;
   return {
@@ -570,7 +575,7 @@ export async function importActor(_: FormState, formData: FormData): Promise<For
     if (found.ids.length === 0) return { error: `${found.person}: keine passenden Filme ab 1980 gefunden.` };
     const have = await existingMovieIds(found.ids);
     const missing = found.ids.filter((x) => !have.has(x)).slice(0, 60);
-    const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0 };
+    const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0, origin: 0 };
     revalidatePath("/", "layout");
     return {
       message: `${found.person}: ${found.ids.length} passende Filme, ${have.size} waren schon im Katalog, ${summary(r)}. Filme im Katalog: ${await catalogMovieCount()}.`,

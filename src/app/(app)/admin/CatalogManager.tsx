@@ -4,12 +4,16 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Poster from "@/components/Poster";
 import { deleteTitles } from "@/app/actions";
+import { excludedOrigin } from "@/lib/origin";
 
 export type ManageTitle = {
   id: number;
   tmdb_id: number;
   imdb_id: string | null;
   original_title: string | null;
+  original_language: string | null;
+  countries: string[] | null;
+  globes: string[] | null;
   title: string;
   release_year: number | null;
   media_type: string;
@@ -34,6 +38,18 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(200);
   const [onlyDupes, setOnlyDupes] = useState(false);
+  const [onlyOrigin, setOnlyOrigin] = useState(false);
+
+  // Chinesische, russische, indische Produktionen (Preisträger ausgenommen)
+  const originReason = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const t of titles) {
+      const awarded = (t.oscars?.length ?? 0) + (t.globes?.length ?? 0) > 0;
+      const r = awarded ? null : excludedOrigin(t);
+      if (r) m.set(t.id, r);
+    }
+    return m;
+  }, [titles]);
 
   // Mögliche Duplikate: gleiche IMDb-ID, oder gleicher (Original-)Titel im gleichen/nächsten Jahr
   const dupeIds = useMemo(() => {
@@ -61,13 +77,13 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
     const q = query.trim().toLowerCase();
     const list = titles.filter(
       (t) => (kind === "alle" || t.media_type === kind) && (!q || t.title.toLowerCase().includes(q) || String(t.release_year) === q) &&
-        (!onlyDupes || dupeIds.has(t.id)),
+        (!onlyDupes || dupeIds.has(t.id)) && (!onlyOrigin || originReason.has(t.id)),
     );
     if (sort === "titel" || onlyDupes) list.sort((a, b) => a.title.localeCompare(b.title, "de") || (a.release_year ?? 0) - (b.release_year ?? 0));
     else if (sort === "jahr") list.sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0));
     else list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     return list;
-  }, [titles, query, sort, kind, onlyDupes, dupeIds]);
+  }, [titles, query, sort, kind, onlyDupes, dupeIds, onlyOrigin, originReason]);
 
   const allVisibleSelected = visible.length > 0 && visible.every((t) => selected.has(t.id));
 
@@ -132,7 +148,10 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
               <option value="tv">Nur Serien</option>
             </select>
           </label>
-          <button className={`pill ${onlyDupes ? "on" : ""}`} onClick={() => { setOnlyDupes((d) => !d); setSelected(new Set()); }}>
+          <button className={`pill ${onlyOrigin ? "on" : ""}`} onClick={() => { setOnlyOrigin((d) => !d); setOnlyDupes(false); setSelected(new Set()); }}>
+            Chin./Russ./Ind. {originReason.size > 0 && <span className="count">{originReason.size}</span>}
+          </button>
+          <button className={`pill ${onlyDupes ? "on" : ""}`} onClick={() => { setOnlyDupes((d) => !d); setOnlyOrigin(false); setSelected(new Set()); }}>
             Mögliche Duplikate {dupeIds.size > 0 && <span className="count">{dupeIds.size}</span>}
           </button>
           <button className="pill" onClick={toggleAllVisible}>
@@ -165,6 +184,13 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
         {error && <div className="error">{error}</div>}
       </div>
 
+      {onlyOrigin && (
+        <p className="caption">
+          {originReason.size === 0
+            ? "Keine chinesischen, russischen oder indischen Produktionen im Katalog. 👍"
+            : "Nach Originalsprache bzw. ausschließlicher Herkunft (Preisträger ausgenommen). Tipp: „Alle auswählen“ → entfernen."}
+        </p>
+      )}
       {onlyDupes && (
         <p className="caption">
           {dupeIds.size === 0
@@ -184,7 +210,7 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
             <a href={`/titel/${t.id}`} style={{ minWidth: 0 }}>
               <div className="manage-title">{t.title}</div>
               <div className="caption">
-                {[t.media_type === "tv" ? "Serie" : "Film", t.release_year, (t.oscars?.length ?? 0) > 0 ? `🏆 ${t.oscars!.length}` : null]
+                {[t.media_type === "tv" ? "Serie" : "Film", t.release_year, (t.oscars?.length ?? 0) > 0 ? `🏆 ${t.oscars!.length}` : null, onlyOrigin ? originReason.get(t.id) : null]
                   .filter(Boolean).join(" · ")}
               </div>
             </a>
