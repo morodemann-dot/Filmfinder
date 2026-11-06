@@ -19,7 +19,14 @@ async function tmdb<T>(path: string, params: Record<string, string> = {}): Promi
     headers: { Authorization: `Bearer ${token}`, accept: "application/json" },
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`TMDB-Fehler ${res.status} bei ${path}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body.status_message || (body.errors ? body.errors.join(", ") : "");
+    } catch {}
+    throw new Error(`TMDB-Fehler ${res.status} bei ${path}${detail ? `: ${detail}` : ""}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -228,7 +235,7 @@ type MovieCredits = {
 
 // Sucht eine Regie-Person und liefert ihre Filme ab 1980.
 export async function directorMovies(name: string, minVotes: number) {
-  const s = await tmdb<PersonSearch>("/search/person", { query: name, include_adult: "false" });
+  const s = await tmdb<PersonSearch>("/search/person", { query: name.normalize("NFC").replace(/\s+/g, " ").trim() });
   const person = s.results.find((p) => p.known_for_department === "Directing") ?? s.results[0];
   if (!person) return null;
   const c = await tmdb<MovieCredits>(`/person/${person.id}/movie_credits`);
