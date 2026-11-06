@@ -8,7 +8,7 @@ import { deleteTitles, getSuspects, keepTitle, type Suspect } from "@/app/action
 
 // Verdachtsfälle: die App schlägt Filme zum Aussortieren vor – du bestätigst.
 export default function Suspects({ genres }: { genres: string[] }) {
-  const [mode, setMode] = useState<"liste" | "tindern">("liste");
+  const [mode, setMode] = useState<"liste" | "tindern">("tindern");
   const [minRating, setMinRating] = useState(6.0);
   const [minVotes, setMinVotes] = useState(1000);
   const [list, setList] = useState<Suspect[] | null>(null);
@@ -104,8 +104,8 @@ export default function Suspects({ genres }: { genres: string[] }) {
       </div>
 
       <div className="segmented" style={{ maxWidth: 320, margin: "0 0 16px" }}>
-        <button aria-pressed={mode === "liste"} onClick={() => { setMode("liste"); load(minRating, minVotes); }}>Liste</button>
         <button aria-pressed={mode === "tindern"} onClick={() => setMode("tindern")}>Tindern</button>
+        <button aria-pressed={mode === "liste"} onClick={() => { setMode("liste"); load(minRating, minVotes); }}>Liste</button>
       </div>
 
       {mode === "tindern" ? (

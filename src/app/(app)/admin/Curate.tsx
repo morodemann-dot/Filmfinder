@@ -12,6 +12,7 @@ import {
   type CurationFilter,
 } from "@/app/actions";
 import { awardDe, formatRuntime, formatVotes } from "@/lib/types";
+import { excludedOrigin } from "@/lib/origin";
 
 // Aussortieren im Tinder-Stil: rechts = behalten, links = entfernen.
 
@@ -311,6 +312,7 @@ function CardFace({ card }: { card: CurationCard }) {
           {[card.media_type === "tv" ? "Serie" : null, card.release_year, formatRuntime(card.runtime_seconds), card.genres.slice(0, 3).join(", ")]
             .filter(Boolean).join(" · ")}
         </div>
+        {excludedOrigin(card) && <div className="suspect-why" style={{ marginTop: 6 }}>⚠︎ {excludedOrigin(card)}</div>}
         {formatVotes(card.vote_average, card.vote_count) && (
           <div className="small" style={{ marginTop: 6 }}><span className="muted">TMDB:</span> {formatVotes(card.vote_average, card.vote_count)}</div>
         )}

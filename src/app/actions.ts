@@ -6,7 +6,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabase/server";
-import { excludedOrigin } from "@/lib/origin";
+import { excludedOrigin, originOrFilterParts } from "@/lib/origin";
 import {
   AWARD_FILMS,
   actorMovies,
@@ -405,9 +405,17 @@ export async function refreshChunk(): Promise<{ done: number; remaining: number 
 
 // ---------------- Verdachtsfälle ----------------
 
+// Verdacht = (hat Bewertung UND (schwach bewertet ODER kaum bekannt)) ODER ausgeschlossene Herkunft
+function suspectOr(minRating: number, minVotes: number) {
+  return [
+    `and(vote_count.not.is.null,or(vote_average.lt.${Number(minRating)},vote_count.lt.${Math.round(Number(minVotes))}))`,
+    ...originOrFilterParts(),
+  ].join(",");
+}
+
 export type Suspect = {
   id: number; title: string; release_year: number | null; poster_path: string | null; genres: string[];
-  vote_average: number | null; vote_count: number | null; reasons: string[];
+  vote_average: number | null; vote_count: number | null; reasons: string[]; origin?: boolean;
 };
 
 // Filme, die womöglich nicht in den Katalog gehören: schwach bewertet oder kaum bekannt.
@@ -419,13 +427,12 @@ export async function getSuspects(minRating: number, minVotes: number): Promise<
   const [{ data, error }, { count: missing }] = await Promise.all([
     admin
       .from("titles")
-      .select("id,title,release_year,poster_path,genres,vote_average,vote_count")
+      .select("id,title,release_year,poster_path,genres,vote_average,vote_count,original_language,countries")
       .is("kept_at", null)
       .eq("oscars", "{}")
       .eq("globes", "{}")
-      .not("vote_count", "is", null)
-      .or(`vote_average.lt.${minRating},vote_count.lt.${minVotes}`)
-      .order("vote_average", { ascending: true })
+      .or(suspectOr(minRating, minVotes))
+      .order("vote_average", { ascending: true, nullsFirst: false })
       .limit(500),
     admin.from("titles").select("id", { count: "exact", head: true }).is("vote_count", null),
   ]);
@@ -433,12 +440,16 @@ export async function getSuspects(minRating: number, minVotes: number): Promise<
   const fmt = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const list = (data ?? []).map((t) => {
     const reasons: string[] = [];
+    const origin = excludedOrigin({ original_language: t.original_language as string | null, countries: t.countries as string[] | null });
+    if (origin) reasons.push(origin);
     const avg = t.vote_average as number | null;
     const cnt = t.vote_count as number | null;
     if (avg != null && avg < minRating) reasons.push(`Schwach bewertet: ${fmt(avg)}`);
     if (cnt != null && cnt < minVotes) reasons.push(`Kaum bekannt: ${cnt.toLocaleString("de-DE")} Stimmen`);
-    return { ...(t as Omit<Suspect, "reasons">), reasons };
+    return { ...(t as Omit<Suspect, "reasons">), reasons, origin: !!origin };
   });
+  // Herkunft zuerst, dann schwächste Bewertung
+  list.sort((a, b) => Number(b.origin) - Number(a.origin));
   return { list, missing: missing ?? 0 };
 }
 
@@ -632,10 +643,11 @@ export type CurationCard = {
   directors: string[] | null; cast_names: string[] | null; overview: string | null; poster_path: string | null;
   popularity: number | null; runtime_seconds: number | null; oscars: string[] | null; globes: string[] | null;
   vote_average: number | null; vote_count: number | null;
+  original_language: string | null; countries: string[] | null;
 };
 
 const CURATION_COLS =
-  "id,tmdb_id,media_type,title,release_year,genres,directors,cast_names,overview,poster_path,popularity,runtime_seconds,oscars,globes,vote_average,vote_count";
+  "id,tmdb_id,media_type,title,release_year,genres,directors,cast_names,overview,poster_path,popularity,runtime_seconds,oscars,globes,vote_average,vote_count,original_language,countries";
 
 // Nächster Stapel noch nicht geprüfter Titel (max. 30).
 export async function getCurationBatch(f: CurationFilter, skip: number[]): Promise<{ cards: CurationCard[]; remaining: number }> {
@@ -650,7 +662,7 @@ export async function getCurationBatch(f: CurationFilter, skip: number[]): Promi
     // Preisgekrönte Filme werden beim Aussortieren grundsätzlich nicht gezeigt
     q = q.eq("oscars", "{}").eq("globes", "{}");
     if (f.minRating != null && f.minVotes != null) {
-      q = q.not("vote_count", "is", null).or(`vote_average.lt.${Number(f.minRating)},vote_count.lt.${Math.round(Number(f.minVotes))}`);
+      q = q.or(suspectOr(f.minRating, f.minVotes));
     }
     if (skip.length) q = q.not("id", "in", `(${skip.slice(-300).join(",")})`);
     return q;

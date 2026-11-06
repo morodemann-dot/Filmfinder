@@ -5,7 +5,7 @@
 // So bleiben z. B. englischsprachige US-Koproduktionen drin.
 // Preisträger sind ausgenommen (das regeln die Stellen, die diese Funktion benutzen).
 
-const LANGS: Record<string, string> = {
+export const LANGS: Record<string, string> = {
   // China / Taiwan / Hongkong
   zh: "Chinesisch", cn: "Chinesisch (Kantonesisch)",
   // Russland
@@ -23,7 +23,7 @@ const LANGS: Record<string, string> = {
   yo: "Yoruba", ig: "Igbo", ha: "Hausa",
 };
 
-const COUNTRIES: Record<string, string> = {
+export const COUNTRIES: Record<string, string> = {
   CN: "China", HK: "Hongkong", TW: "Taiwan",
   RU: "Russland", SU: "Sowjetunion",
   IN: "Indien", PK: "Pakistan",
@@ -38,4 +38,12 @@ export function excludedOrigin(t: { original_language: string | null; countries:
   const c = t.countries ?? [];
   if (c.length > 0 && c.every((x) => COUNTRIES[x])) return `Herkunft: ${c.map((x) => COUNTRIES[x]).join(", ")}`;
   return null;
+}
+
+// Filter-Ausdruck für die Datenbank (PostgREST "or"):
+// Sprache in der Liste ODER (Länder nicht leer UND alle Länder in der Liste)
+export function originOrFilterParts() {
+  const langs = Object.keys(LANGS).join(",");
+  const countries = Object.keys(COUNTRIES).join(",");
+  return [`original_language.in.(${langs})`, `and(countries.cd.{${countries}},countries.neq.{})`];
 }
