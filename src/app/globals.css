@@ -323,3 +323,16 @@ details[open] summary::after { content: " ⌄"; }
 .swipe-poster img { object-position: center 20%; }
 .curate .toolbar { margin-bottom: 8px; }
 .swipe-actions { margin-top: 14px; }
+/* Stapel-Animationen */
+.swipe-card.fly { animation: fly-out 0.36s ease-in forwards; pointer-events: none; }
+@keyframes fly-out {
+  from { transform: translateX(var(--from-x)) rotate(var(--from-rot)); opacity: 1; }
+  to { transform: translateX(var(--to-x)) rotate(var(--to-rot)); opacity: 0.6; }
+}
+.swipe-card.enter { animation: fly-in 0.3s ease-out; }
+@keyframes fly-in {
+  from { transform: translateX(var(--from-x)) rotate(20deg); }
+  to { transform: translateX(0) rotate(0); }
+}
+.deck { overflow: visible; }
+html, body { overflow-x: clip; }

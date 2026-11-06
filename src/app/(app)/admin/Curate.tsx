@@ -31,8 +31,11 @@ export default function Curate({ genres }: { genres: string[] }) {
   const [history, setHistory] = useState<Done[]>([]);
   const [stats, setStats] = useState({ keep: 0, remove: 0 });
   const [dx, setDx] = useState(0);
-  const [leaving, setLeaving] = useState<"left" | "right" | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Karten, die gerade aus dem Stapel fliegen (eigene Elemente, damit nichts "zurückspringt")
+  const [flying, setFlying] = useState<{ card: CurationCard; dir: 1 | -1; from: number }[]>([]);
+  // Karte, die per "Rückgängig" zurück auf den Stapel fliegt
+  const [entering, setEntering] = useState<{ id: number; dir: 1 | -1 } | null>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
   const handled = useRef<Set<number>>(new Set());
 
@@ -64,19 +67,19 @@ export default function Curate({ genres }: { genres: string[] }) {
   }, [cards.length, loading, remaining, filter, load]);
 
   const card = cards[0];
-  const next = cards[1];
 
   function decide(action: "keep" | "remove") {
-    if (!card || leaving) return;
+    if (!card) return;
     const c = card;
+    const dir: 1 | -1 = action === "keep" ? 1 : -1;
     handled.current.add(c.id);
-    setLeaving(action === "keep" ? "right" : "left");
-    setTimeout(() => {
-      setCards((prev) => prev.slice(1));
-      setLeaving(null);
-      setDx(0);
-      setRemaining((r) => (r ? r - 1 : r));
-    }, 220);
+    // Oberste Karte fliegt weg – die darunter liegende ist sofort die neue oberste
+    setFlying((f) => [...f, { card: c, dir, from: dx }]);
+    setTimeout(() => setFlying((f) => f.filter((x) => x.card.id !== c.id)), 380);
+    setCards((prev) => prev.slice(1));
+    setDx(0);
+    setEntering(null);
+    setRemaining((r) => (r ? r - 1 : r));
     setHistory((h) => [...h.slice(-19), { card: c, action }]);
     setStats((s) => ({ ...s, [action]: s[action] + 1 }));
     (action === "keep" ? keepTitle(c.id, true) : removeForCuration(c.id)).catch((e) =>
@@ -92,8 +95,9 @@ export default function Curate({ genres }: { genres: string[] }) {
     handled.current.delete(last.card.id);
     try {
       if (last.action === "keep") {
-        await keepTitle(last.card.id, false);
+        setEntering({ id: last.card.id, dir: 1 });
         setCards((prev) => [last.card, ...prev]);
+        await keepTitle(last.card.id, false);
       } else {
         // Wiederherstellen bekommt eine neue ID – darum neu laden
         await restoreTitle(last.card.media_type, last.card.tmdb_id);
@@ -136,7 +140,7 @@ export default function Curate({ genres }: { genres: string[] }) {
     return () => window.removeEventListener("keydown", h);
   });
 
-  const offset = leaving === "right" ? 600 : leaving === "left" ? -600 : dx;
+  const progress = Math.min(1, Math.abs(dx) / THRESHOLD); // wie weit die oberste Karte gezogen ist
   const activeFilters = (filter.genre ? 1 : 0) + (filter.decade ? 1 : 0) + (filter.noAwards ? 1 : 0);
 
   return (
@@ -185,38 +189,45 @@ export default function Curate({ genres }: { genres: string[] }) {
       )}
 
       <div className="deck">
-        {next && (
-          <div className="swipe-card behind" aria-hidden>
-            <Poster path={next.poster_path} title={next.title} size="w342" />
-          </div>
-        )}
-        {card ? (
-          <div
-            className="swipe-card"
-            style={{
-              transform: `translateX(${offset}px) rotate(${offset / 18}deg)`,
-              transition: dragging ? "none" : "transform 0.22s ease",
-            }}
-            onPointerDown={onDown}
-            onPointerMove={onMove}
-            onPointerUp={onUp}
-            onPointerCancel={onUp}
-          >
-            <div className="stamp keep" style={{ opacity: Math.max(0, Math.min(1, offset / THRESHOLD)) }}>BEHALTEN</div>
-            <div className="stamp remove" style={{ opacity: Math.max(0, Math.min(1, -offset / THRESHOLD)) }}>RAUS</div>
-            <div className="swipe-poster"><Poster path={card.poster_path} title={card.title} size="w342" /></div>
-            <div className="swipe-info">
-              <div className="swipe-title">{card.title}</div>
-              <div className="caption">
-                {[card.media_type === "tv" ? "Serie" : null, card.release_year, formatRuntime(card.runtime_seconds), card.genres.slice(0, 3).join(", ")]
-                  .filter(Boolean).join(" · ")}
+        {cards.length > 0 ? (
+          cards.slice(0, 3).map((c, i) => {
+            // i = 0 ist die oberste Karte. Darunter liegende sind etwas kleiner und rücken beim Ziehen nach.
+            const depth = i === 1 ? 1 - progress : i;
+            const style: React.CSSProperties =
+              i === 0
+                ? {
+                    transform: `translateX(${dx}px) rotate(${dx / 18}deg)`,
+                    transition: dragging ? "none" : "transform 0.25s ease",
+                    zIndex: 10,
+                  }
+                : {
+                    transform: `translateY(${depth * 12}px) scale(${1 - depth * 0.045})`,
+                    transition: dragging ? "none" : "transform 0.25s ease",
+                    zIndex: 10 - i,
+                  };
+            const enter = i === 0 && entering?.id === c.id;
+            return (
+              <div
+                key={c.id}
+                className={`swipe-card ${enter ? "enter" : ""}`}
+                style={enter ? { ...style, ["--from-x" as string]: `${entering!.dir * 700}px` } : style}
+                aria-hidden={i > 0}
+                onPointerDown={i === 0 ? onDown : undefined}
+                onPointerMove={i === 0 ? onMove : undefined}
+                onPointerUp={i === 0 ? onUp : undefined}
+                onPointerCancel={i === 0 ? onUp : undefined}
+                onAnimationEnd={enter ? () => setEntering(null) : undefined}
+              >
+                {i === 0 && (
+                  <>
+                    <div className="stamp keep" style={{ opacity: Math.max(0, Math.min(1, dx / THRESHOLD)) }}>BEHALTEN</div>
+                    <div className="stamp remove" style={{ opacity: Math.max(0, Math.min(1, -dx / THRESHOLD)) }}>RAUS</div>
+                  </>
+                )}
+                <CardFace card={c} />
               </div>
-              {(card.directors?.length ?? 0) > 0 && <div className="small" style={{ marginTop: 6 }}><span className="muted">Regie:</span> {card.directors!.join(", ")}</div>}
-              {(card.cast_names?.length ?? 0) > 0 && <div className="small"><span className="muted">Mit:</span> {card.cast_names!.slice(0, 3).join(", ")}</div>}
-              {(card.oscars?.length ?? 0) > 0 && <div className="small" style={{ marginTop: 4 }}>🏆 {card.oscars!.slice(0, 2).map(awardDe).join(", ")}{card.oscars!.length > 2 ? " …" : ""}</div>}
-              {card.overview && <p className="swipe-overview">{card.overview}</p>}
-            </div>
-          </div>
+            );
+          }).reverse()
         ) : (
           <div className="empty" style={{ paddingTop: 80 }}>
             {loading ? "Lade …" : (
@@ -229,6 +240,25 @@ export default function Curate({ genres }: { genres: string[] }) {
             )}
           </div>
         )}
+        {flying.map((f) => (
+          <div
+            key={`fly-${f.card.id}`}
+            className="swipe-card fly"
+            style={{
+              zIndex: 20,
+              ["--from-x" as string]: `${f.from}px`,
+              ["--from-rot" as string]: `${f.from / 18}deg`,
+              ["--to-x" as string]: `${f.dir * 700}px`,
+              ["--to-rot" as string]: `${f.dir * 28}deg`,
+            }}
+            aria-hidden
+          >
+            <div className={`stamp ${f.dir === 1 ? "keep" : "remove"}`} style={{ opacity: 1 }}>
+              {f.dir === 1 ? "BEHALTEN" : "RAUS"}
+            </div>
+            <CardFace card={f.card} />
+          </div>
+        ))}
       </div>
 
       <div className="swipe-actions">
@@ -241,5 +271,25 @@ export default function Curate({ genres }: { genres: string[] }) {
       </div>
       {error && <p className="error" style={{ textAlign: "center" }}>{error}</p>}
     </div>
+  );
+}
+
+// Inhalt einer Karte (Plakat + Infos)
+function CardFace({ card }: { card: CurationCard }) {
+  return (
+    <>
+      <div className="swipe-poster"><Poster path={card.poster_path} title={card.title} size="w342" /></div>
+      <div className="swipe-info">
+        <div className="swipe-title">{card.title}</div>
+        <div className="caption">
+          {[card.media_type === "tv" ? "Serie" : null, card.release_year, formatRuntime(card.runtime_seconds), card.genres.slice(0, 3).join(", ")]
+            .filter(Boolean).join(" · ")}
+        </div>
+        {(card.directors?.length ?? 0) > 0 && <div className="small" style={{ marginTop: 6 }}><span className="muted">Regie:</span> {card.directors!.join(", ")}</div>}
+        {(card.cast_names?.length ?? 0) > 0 && <div className="small"><span className="muted">Mit:</span> {card.cast_names!.slice(0, 3).join(", ")}</div>}
+        {(card.oscars?.length ?? 0) > 0 && <div className="small" style={{ marginTop: 4 }}>🏆 {card.oscars!.slice(0, 2).map(awardDe).join(", ")}{card.oscars!.length > 2 ? " …" : ""}</div>}
+        {card.overview && <p className="swipe-overview">{card.overview}</p>}
+      </div>
+    </>
   );
 }
