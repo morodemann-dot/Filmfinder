@@ -7,6 +7,9 @@ import { deleteTitles } from "@/app/actions";
 
 export type ManageTitle = {
   id: number;
+  tmdb_id: number;
+  imdb_id: string | null;
+  original_title: string | null;
   title: string;
   release_year: number | null;
   media_type: string;
@@ -30,17 +33,41 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(200);
+  const [onlyDupes, setOnlyDupes] = useState(false);
+
+  // Mögliche Duplikate: gleiche IMDb-ID, oder gleicher (Original-)Titel im gleichen/nächsten Jahr
+  const dupeIds = useMemo(() => {
+    const norm = (t: string | null) => (t ?? "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
+    const groups = new Map<string, number[]>();
+    const add = (k: string, id: number) => groups.set(k, [...(groups.get(k) ?? []), id]);
+    for (const t of titles) {
+      if (t.imdb_id) add(`imdb:${t.imdb_id}`, t.id);
+      const y = t.release_year ?? 0;
+      for (const name of new Set([norm(t.title), norm(t.original_title)])) {
+        if (!name) continue;
+        add(`t:${t.media_type}:${name}:${y}`, t.id);
+        add(`t:${t.media_type}:${name}:${y + 1}`, t.id); // ±1 Jahr (unterschiedliche Startdaten)
+      }
+    }
+    const ids = new Set<number>();
+    for (const g of groups.values()) {
+      const uniq = [...new Set(g)];
+      if (uniq.length > 1) uniq.forEach((id) => ids.add(id));
+    }
+    return ids;
+  }, [titles]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = titles.filter(
-      (t) => (kind === "alle" || t.media_type === kind) && (!q || t.title.toLowerCase().includes(q) || String(t.release_year) === q),
+      (t) => (kind === "alle" || t.media_type === kind) && (!q || t.title.toLowerCase().includes(q) || String(t.release_year) === q) &&
+        (!onlyDupes || dupeIds.has(t.id)),
     );
-    if (sort === "titel") list.sort((a, b) => a.title.localeCompare(b.title, "de"));
+    if (sort === "titel" || onlyDupes) list.sort((a, b) => a.title.localeCompare(b.title, "de") || (a.release_year ?? 0) - (b.release_year ?? 0));
     else if (sort === "jahr") list.sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0));
     else list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     return list;
-  }, [titles, query, sort, kind]);
+  }, [titles, query, sort, kind, onlyDupes, dupeIds]);
 
   const allVisibleSelected = visible.length > 0 && visible.every((t) => selected.has(t.id));
 
@@ -105,6 +132,9 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
               <option value="tv">Nur Serien</option>
             </select>
           </label>
+          <button className={`pill ${onlyDupes ? "on" : ""}`} onClick={() => { setOnlyDupes((d) => !d); setSelected(new Set()); }}>
+            Mögliche Duplikate {dupeIds.size > 0 && <span className="count">{dupeIds.size}</span>}
+          </button>
           <button className="pill" onClick={toggleAllVisible}>
             {allVisibleSelected ? "Auswahl aufheben" : `Alle ${visible.length} auswählen`}
           </button>
@@ -135,6 +165,13 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
         {error && <div className="error">{error}</div>}
       </div>
 
+      {onlyDupes && (
+        <p className="caption">
+          {dupeIds.size === 0
+            ? "Keine möglichen Duplikate gefunden. 👍"
+            : "Gleiche IMDb-ID oder gleicher Titel im selben Jahr. Prüfe kurz (z. B. Remakes haben andere Jahre) und entferne den überzähligen Eintrag mit ✕ – am besten ohne Sperrliste."}
+        </p>
+      )}
       <div className="caption" style={{ marginBottom: 8 }}>
         {visible.length} Titel{selected.size > 0 && ` · ${selected.size} ausgewählt`}
       </div>

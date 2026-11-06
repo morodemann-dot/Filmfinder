@@ -35,7 +35,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   const titles = manage
     ? await fetchAll<ManageTitle>((from, to) =>
-        admin.from("titles").select("id,title,release_year,media_type,poster_path,created_at,oscars").range(from, to),
+        admin.from("titles").select("id,tmdb_id,imdb_id,title,original_title,release_year,media_type,poster_path,created_at,oscars").range(from, to),
       )
     : [];
 

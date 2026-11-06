@@ -39,21 +39,43 @@ export default function Curate({ genres }: { genres: string[] }) {
   const start = useRef<{ x: number; y: number } | null>(null);
   const handled = useRef<Set<number>>(new Set());
 
+  const busy = useRef(false); // läuft gerade ein Nachladen?
+  const generation = useRef(0); // erhöht sich bei jedem Neustart (z. B. Filterwechsel)
+
   const load = useCallback(async (f: CurationFilter, replace: boolean) => {
+    // Nie zwei Nachlade-Vorgänge gleichzeitig – sonst kommen Karten doppelt
+    if (!replace && busy.current) return;
+    if (replace) generation.current += 1;
+    const gen = generation.current;
+    busy.current = true;
     setLoading(true);
     setError(null);
     try {
       const r = await getCurationBatch(f, [...handled.current]);
+      if (gen !== generation.current) return; // veraltete Antwort (Filter wurde inzwischen geändert)
       setCards((prev) => {
         const base = replace ? [] : prev;
         const known = new Set(base.map((c) => c.id));
-        return [...base, ...r.cards.filter((c) => !known.has(c.id))];
+        const seenTmdb = new Set(base.map((c) => `${c.media_type}-${c.tmdb_id}`));
+        const fresh: CurationCard[] = [];
+        for (const c of r.cards) {
+          const k = `${c.media_type}-${c.tmdb_id}`;
+          // schon entschieden, schon im Stapel oder doppelt in der Lieferung → weglassen
+          if (handled.current.has(c.id) || known.has(c.id) || seenTmdb.has(k)) continue;
+          known.add(c.id);
+          seenTmdb.add(k);
+          fresh.push(c);
+        }
+        return [...base, ...fresh];
       });
       setRemaining(r.remaining);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (gen === generation.current) {
+        busy.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
