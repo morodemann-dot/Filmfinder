@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Poster from "@/components/Poster";
+import { MIN_RATINGS } from "@/lib/onboarding";
 import PickDeck, { type Pick } from "@/components/PickDeck";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
@@ -11,7 +12,6 @@ import { formatRuntime, type Title } from "@/lib/types";
 
 const COLS =
   "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds";
-const MIN_RATINGS = 10;
 
 type SP = { stimmung?: string; zeit?: string; modus?: string };
 

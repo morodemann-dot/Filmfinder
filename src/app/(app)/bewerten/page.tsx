@@ -13,10 +13,10 @@ export default async function RatePage() {
   const user = await getUser();
 
   const [mine, catalog] = await Promise.all([
-    fetchAll<{ title_id: number; status: string; titles: SeenTitle | null }>((from, to) =>
+    fetchAll<{ title_id: number; status: string; rating: number | null; titles: SeenTitle | null }>((from, to) =>
       supabase
         .from("user_title_feedback")
-        .select("title_id,status,titles(directors,cast_names,collection_id)")
+        .select("title_id,status,rating,titles(directors,cast_names,collection_id)")
         .eq("user_id", user!.id)
         .range(from, to),
     ),
@@ -30,7 +30,7 @@ export default async function RatePage() {
   return (
     <>
       <h1 className="page-title-compact">Schnell bewerten</h1>
-      <QuickRate titles={queue} alreadyDone={done.size} />
+      <QuickRate titles={queue} alreadyDone={done.size} ratedBefore={mine.filter((m) => m.rating != null).length} />
     </>
   );
 }

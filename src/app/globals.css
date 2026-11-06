@@ -421,3 +421,24 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .act:active .round { transform: scale(0.9); }
 .act:disabled { opacity: 0.4; }
 .linkish:disabled { opacity: 0.35; text-decoration: none; }
+
+/* ---------- Begrüßung neuer Nutzer ---------- */
+.welcome-backdrop {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); animation: fade 0.2s ease-out;
+}
+@media (min-width: 640px) { .welcome-backdrop { align-items: center; } }
+.welcome {
+  width: 100%; max-width: 420px; background: var(--surface); border-radius: 22px; padding: 24px 20px 18px;
+  text-align: center; animation: pop 0.22s ease-out;
+}
+.welcome h2 { font-size: 1.4rem; margin: 6px 0 8px; }
+.welcome p { color: #d1d1d6; font-weight: 300; line-height: 1.45; margin: 0 0 10px; }
+.welcome-icon { font-size: 2.2rem; color: var(--accent); line-height: 1; }
+.welcome-actions { display: grid; gap: 8px; margin-top: 14px; }
+.welcome-actions .btn { width: 100%; min-height: 46px; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+.caption.goal { color: var(--accent); font-weight: 500; }
+.caption.goal.done { color: var(--ok); font-weight: 700; }

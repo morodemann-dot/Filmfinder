@@ -6,6 +6,8 @@ import Score, { SCORE_LABEL, scoreColor } from "@/components/Score";
 import { setFeedback } from "@/app/actions";
 import type { Status } from "@/lib/types";
 import { pullRelated, type RateCandidate } from "@/lib/likelySeen";
+import { MIN_RATINGS } from "@/lib/onboarding";
+import Link from "next/link";
 
 type Answer = { status: Status; rating: number | null };
 
@@ -16,7 +18,15 @@ const ANSWER_TEXT: Record<Status, string> = {
   nicht_interessiert: "Kein Interesse",
 };
 
-export default function QuickRate({ titles: initial, alreadyDone = 0 }: { titles: RateCandidate[]; alreadyDone?: number }) {
+export default function QuickRate({
+  titles: initial,
+  alreadyDone = 0,
+  ratedBefore = 0,
+}: {
+  titles: RateCandidate[];
+  alreadyDone?: number;
+  ratedBefore?: number; // schon mit Punkten bewertet (für "x / 10 bis zum Start")
+}) {
   // Warteschlange: wird nach "gesehen" um verwandte Filme (gleiche Reihe/Regie) umsortiert.
   const [titles, setTitles] = useState(initial);
   const [because, setBecause] = useState<Record<number, string>>({}); // "Weil du X gesehen hast"
@@ -98,7 +108,12 @@ export default function QuickRate({ titles: initial, alreadyDone = 0 }: { titles
         <button className="btn ghost" onClick={back} disabled={index === 0 && !flash} style={{ paddingLeft: 0 }}>
           ‹ Zurück
         </button>
-        <span className="caption">{alreadyDone + Object.keys(answers).length} eingeordnet</span>
+        {(() => {
+          const rated = ratedBefore + Object.values(answers).filter((a) => a.rating != null).length;
+          if (ratedBefore >= MIN_RATINGS) return <span className="caption">{alreadyDone + Object.keys(answers).length} eingeordnet</span>;
+          if (rated < MIN_RATINGS) return <span className="caption goal">{rated} / {MIN_RATINGS} bis zum Start</span>;
+          return <Link href="/" className="caption goal done">✓ Filmfinder bereit ›</Link>;
+        })()}
       </div>
 
       <div style={{ position: "relative" }}>
