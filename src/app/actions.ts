@@ -197,7 +197,7 @@ async function catalogMovieCount() {
 function summary(s: { ok: number; failed: number; netflix: number; small: number; origin?: number }) {
   const parts = [`${s.ok} Filme übernommen`];
   if (s.netflix) parts.push(`${s.netflix} Netflix-Filme aussortiert`);
-  if (s.origin) parts.push(`${s.origin} chin./russ./ind. Produktionen übersprungen`);
+  if (s.origin) parts.push(`${s.origin} Filme wegen Herkunft übersprungen`);
   if (s.small) parts.push(`${s.small} ohne großes Studio aussortiert`);
   if (s.failed) parts.push(`${s.failed} fehlgeschlagen`);
   return parts.join(", ");

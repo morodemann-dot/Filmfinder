@@ -149,7 +149,7 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
             </select>
           </label>
           <button className={`pill ${onlyOrigin ? "on" : ""}`} onClick={() => { setOnlyOrigin((d) => !d); setOnlyDupes(false); setSelected(new Set()); }}>
-            Chin./Russ./Ind. {originReason.size > 0 && <span className="count">{originReason.size}</span>}
+            Ausgeschl. Herkunft {originReason.size > 0 && <span className="count">{originReason.size}</span>}
           </button>
           <button className={`pill ${onlyDupes ? "on" : ""}`} onClick={() => { setOnlyDupes((d) => !d); setOnlyOrigin(false); setSelected(new Set()); }}>
             Mögliche Duplikate {dupeIds.size > 0 && <span className="count">{dupeIds.size}</span>}
@@ -187,7 +187,7 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
       {onlyOrigin && (
         <p className="caption">
           {originReason.size === 0
-            ? "Keine chinesischen, russischen oder indischen Produktionen im Katalog. 👍"
+            ? "Keine Filme mit ausgeschlossener Herkunft im Katalog. 👍"
             : "Nach Originalsprache bzw. ausschließlicher Herkunft (Preisträger ausgenommen). Tipp: „Alle auswählen“ → entfernen."}
         </p>
       )}
