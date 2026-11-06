@@ -570,3 +570,77 @@ export async function clearBlocklist(): Promise<void> {
   await createAdminClient().from("excluded_titles").delete().neq("tmdb_id", -1);
   revalidatePath("/admin");
 }
+
+// ---------------- Aussortieren (Tinder-Stil) ----------------
+
+export type CurationFilter = { genre?: string; decade?: number; noAwards?: boolean; order?: "unbekannt" | "zufall" | "neu" };
+export type CurationCard = {
+  id: number; tmdb_id: number; media_type: string; title: string; release_year: number | null; genres: string[];
+  directors: string[] | null; cast_names: string[] | null; overview: string | null; poster_path: string | null;
+  popularity: number | null; runtime_seconds: number | null; oscars: string[] | null; globes: string[] | null;
+};
+
+const CURATION_COLS =
+  "id,tmdb_id,media_type,title,release_year,genres,directors,cast_names,overview,poster_path,popularity,runtime_seconds,oscars,globes";
+
+// Nächster Stapel noch nicht geprüfter Titel (max. 30).
+export async function getCurationBatch(f: CurationFilter, skip: number[]): Promise<{ cards: CurationCard[]; remaining: number }> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
+  const admin = createAdminClient();
+
+  const base = () => {
+    let q = admin.from("titles").select(CURATION_COLS, { count: "exact" }).is("kept_at", null);
+    if (f.genre) q = q.contains("genres", [f.genre]);
+    if (f.decade) q = q.gte("release_year", f.decade).lt("release_year", f.decade + 10);
+    if (f.noAwards) q = q.eq("oscars", "{}").eq("globes", "{}");
+    if (skip.length) q = q.not("id", "in", `(${skip.slice(-300).join(",")})`);
+    return q;
+  };
+
+  let q = base();
+  if (f.order === "neu") q = q.order("created_at", { ascending: false });
+  else if (f.order === "zufall") q = q.order("tmdb_id", { ascending: Math.random() < 0.5 });
+  else q = q.order("popularity", { ascending: true, nullsFirst: true });
+  const { data, error, count } = await q.limit(f.order === "zufall" ? 120 : 30);
+  if (error) throw new Error(error.message + " (wurde die Ergänzung 8 im SQL Editor ausgeführt?)");
+
+  let cards = (data ?? []) as CurationCard[];
+  if (f.order === "zufall") cards = cards.sort(() => Math.random() - 0.5).slice(0, 30);
+  return { cards, remaining: count ?? cards.length };
+}
+
+export async function keepTitle(id: number, keep: boolean) {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
+  const { error } = await createAdminClient()
+    .from("titles").update({ kept_at: keep ? new Date().toISOString() : null }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// Entfernen + sperren. Gibt zurück, was man für "Rückgängig" braucht.
+export async function removeForCuration(id: number) {
+  await deleteTitles([id], true);
+}
+
+// Rückgängig: von der Sperrliste nehmen und neu importieren.
+export async function restoreTitle(mediaType: string, tmdbId: number) {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
+  const admin = createAdminClient();
+  await admin.from("excluded_titles").delete().eq("media_type", mediaType).eq("tmdb_id", tmdbId);
+  if (mediaType === "movie") await importMovieIds([tmdbId], false);
+  else {
+    const row = await fetchTitleRow("tv", tmdbId);
+    await admin.from("titles").upsert(row, { onConflict: "media_type,tmdb_id" });
+  }
+  revalidatePath("/admin");
+}
+
+// Alle "behalten"-Markierungen zurücksetzen (nochmal von vorn prüfen).
+export async function resetCuration(): Promise<void> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) return;
+  await createAdminClient().from("titles").update({ kept_at: null }).not("kept_at", "is", null);
+  revalidatePath("/admin");
+}

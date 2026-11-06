@@ -283,3 +283,43 @@ details[open] summary::after { content: " ⌄"; }
 .quick h2 { font-size: 1.15rem; }
 .quick .progress { margin-bottom: 8px; }
 .quick .row .btn { min-height: 36px; padding: 0 13px; font-size: 0.85rem; }
+
+/* ---------- Aussortieren (Tinder-Stil) ---------- */
+.curate { max-width: 440px; margin: 0 auto; }
+.deck { position: relative; height: min(66vh, 560px); margin-top: 6px; }
+.swipe-card {
+  position: absolute; inset: 0; background: var(--surface); border-radius: 20px; overflow: hidden;
+  display: grid; grid-template-rows: 1fr auto; touch-action: pan-y; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); cursor: grab;
+}
+.swipe-card.behind { transform: scale(0.95) translateY(10px); opacity: 0.5; display: block; }
+.swipe-card.behind .poster { height: 100%; border-radius: 0; aspect-ratio: auto; }
+.swipe-poster { position: relative; min-height: 0; }
+.swipe-poster .poster { position: absolute; inset: 0; aspect-ratio: auto; width: 100%; height: 100%; border-radius: 0; }
+.swipe-poster img { pointer-events: none; -webkit-user-drag: none; }
+.swipe-info { padding: 14px 16px 16px; }
+.swipe-title { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.swipe-overview {
+  font-size: 0.8rem; font-weight: 300; color: #c7c7cc; margin: 8px 0 0; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.stamp {
+  position: absolute; top: 22px; z-index: 3; padding: 4px 12px; border: 3px solid; border-radius: 10px;
+  font-size: 1.6rem; font-weight: 700; letter-spacing: 0.06em; pointer-events: none; background: rgba(0,0,0,0.35);
+}
+.stamp.keep { left: 18px; color: var(--ok); transform: rotate(-12deg); }
+.stamp.remove { right: 18px; color: var(--danger); transform: rotate(12deg); }
+.swipe-actions { display: flex; justify-content: center; align-items: center; gap: 22px; margin-top: 18px; }
+.round {
+  width: 64px; height: 64px; border-radius: 50%; border: 0; font-size: 1.7rem; font-weight: 700; cursor: pointer;
+  background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,0.4); transition: transform 0.12s;
+}
+.round:active { transform: scale(0.9); }
+.round:disabled { opacity: 0.35; }
+.round.keep { color: var(--ok); }
+.round.remove { color: var(--danger); }
+.round.undo { width: 46px; height: 46px; font-size: 1.2rem; color: var(--accent); }
+.deck { height: min(54vh, 520px); }
+.swipe-poster img { object-position: center 20%; }
+.curate .toolbar { margin-bottom: 8px; }
+.swipe-actions { margin-top: 14px; }

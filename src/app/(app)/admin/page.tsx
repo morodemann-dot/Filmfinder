@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AddPanel from "./AddPanel";
 import CatalogManager, { type ManageTitle } from "./CatalogManager";
+import Curate from "./Curate";
 import { clearBlocklist } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
@@ -16,6 +17,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   if (!isAdmin(user?.email)) notFound();
   const { bereich } = await searchParams;
   const manage = bereich === "verwalten";
+  const curate = bereich === "aussortieren";
 
   const admin = createAdminClient();
   const [movies, shows, blocked] = await Promise.all([
@@ -23,6 +25,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     admin.from("titles").select("id", { count: "exact", head: true }).eq("media_type", "tv"),
     admin.from("excluded_titles").select("tmdb_id", { count: "exact", head: true }),
   ]);
+
+  const genreRows = curate ? (await admin.from("titles").select("genres").limit(5000)).data ?? [] : [];
+  const genres = [...new Set(genreRows.flatMap((r) => r.genres as string[]))].sort((a, b) => a.localeCompare(b, "de"));
 
   const titles = manage
     ? await fetchAll<ManageTitle>((from, to) =>
@@ -38,12 +43,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         {(blocked.count ?? 0) > 0 && ` · ${blocked.count} gesperrt`}
       </p>
 
-      <div className="segmented" style={{ margin: "14px 0 20px", maxWidth: 360 }}>
-        <Link href="/admin" aria-pressed={!manage} className="seg-link">Hinzufügen</Link>
+      <div className="segmented" style={{ margin: "14px 0 20px", maxWidth: 420 }}>
+        <Link href="/admin" aria-pressed={!manage && !curate} className="seg-link">Hinzufügen</Link>
+        <Link href="/admin?bereich=aussortieren" aria-pressed={curate} className="seg-link">Aussortieren</Link>
         <Link href="/admin?bereich=verwalten" aria-pressed={manage} className="seg-link">Verwalten</Link>
       </div>
 
-      {manage ? (
+      {curate ? (
+        <Curate genres={genres} />
+      ) : manage ? (
         <>
           <CatalogManager titles={titles} />
           {(blocked.count ?? 0) > 0 && (
