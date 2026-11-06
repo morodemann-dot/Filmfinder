@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import {
   completeCollections,
+  importActor,
   importDirector,
   importFranchise,
   importAwardsChunk,
@@ -214,5 +215,34 @@ export function AwardsForm() {
       {finished && <p className="success">Fertig!</p>}
       {error && <p className="error">{error}</p>}
     </div>
+  );
+}
+
+// Import 5: Filme einer Schauspielerin / eines Schauspielers
+export function ActorForm() {
+  const [state, action, pending] = useActionState<FormState, FormData>(importActor, {});
+  return (
+    <form action={action} className="panel">
+      <h2 style={{ marginTop: 0 }}>Filme einer Schauspielerin / eines Schauspielers</h2>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Spielfilme ab 1980 (ohne Dokus und Gastauftritte als „sie selbst“). Netflix-Produktionen werden aussortiert.
+      </p>
+      <div className="field">
+        <label htmlFor="aname">Name</label>
+        <input id="aname" name="name" className="input" placeholder="z. B. Leonardo DiCaprio" required autoComplete="off" />
+      </div>
+      <label className="row small" style={{ marginBottom: 12 }}>
+        <input type="checkbox" name="onlyLead" defaultChecked style={{ width: 20, height: 20 }} />
+        Nur Haupt- und große Nebenrollen (die ersten 5 der Besetzungsliste)
+      </label>
+      <div className="field">
+        <label htmlFor="aminVotes">Mindestens so viele Bewertungen bei TMDB</label>
+        <input id="aminVotes" name="minVotes" type="number" min={0} step={50} defaultValue={500} className="input" />
+      </div>
+      <button className="btn primary" disabled={pending} style={{ width: "100%" }}>
+        {pending ? "Importiere …" : "Filme hinzufügen"}
+      </button>
+      <Status state={state} />
+    </form>
   );
 }

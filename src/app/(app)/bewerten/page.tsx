@@ -8,26 +8,20 @@ export default async function RatePage() {
   const supabase = await createClient();
   const user = await getUser();
 
-  const { data: fb } = await supabase
+  const { count: done } = await supabase
     .from("user_title_feedback")
-    .select("title_id")
+    .select("title_id", { count: "exact", head: true })
     .eq("user_id", user!.id);
-  const done = (fb ?? []).map((f) => f.title_id as number);
 
-  let q = supabase
-    .from("titles")
-    .select("id,title,poster_path,release_year,format,genres")
-    .order("popularity", { ascending: false, nullsFirst: false })
-    .limit(30);
-  if (done.length) q = q.not("id", "in", `(${done.join(",")})`);
-  const { data } = await q;
+  // Die beliebtesten noch nicht eingeordneten Titel (die Datenbank filtert Bewertetes heraus)
+  const { data } = await supabase.rpc("discover_titles", { p_sort: "beliebt", p_limit: 30 });
 
   return (
     <>
       <h1>Schnell bewerten</h1>
       <p className="muted small" style={{ marginTop: 0 }}>
         Gesehen? Gib Sterne. Nicht gesehen? Einfach weiter – oder auf die Merkliste.
-        Bisher eingeordnet: <strong>{done.length}</strong>
+        Bisher eingeordnet: <strong>{done ?? 0}</strong>
       </p>
       <QuickRate titles={(data ?? []) as Title[]} />
     </>

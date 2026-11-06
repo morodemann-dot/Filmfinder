@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabase/server";
 import {
   AWARD_FILMS,
+  actorMovies,
   DECADES,
   IMPORT_LISTS,
   isShortOnly,
@@ -501,4 +502,30 @@ export async function importAwardsChunk(offset: number, includeShorts: boolean):
     total: list.length,
     ok: r.ok, netflix: r.netflix, failed: r.failed, updated: existing.length,
   };
+}
+
+// Filme einer Schauspielerin / eines Schauspielers importieren. Nur für Admins.
+export async function importActor(_: FormState, formData: FormData): Promise<FormState> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) return { error: "Nur für Admins." };
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (name.length < 2) return { error: "Bitte einen Namen eingeben." };
+  const minVotes = Math.max(0, Number(formData.get("minVotes")) || 0);
+  const onlyLead = formData.get("onlyLead") === "on";
+
+  try {
+    const found = await actorMovies(name, minVotes, onlyLead);
+    if (!found) return { error: `Niemand gefunden für „${name}“.` };
+    if (found.ids.length === 0) return { error: `${found.person}: keine passenden Filme ab 1980 gefunden.` };
+    const have = await existingMovieIds(found.ids);
+    const missing = found.ids.filter((x) => !have.has(x)).slice(0, 60);
+    const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0 };
+    revalidatePath("/");
+    return {
+      message: `${found.person}: ${found.ids.length} passende Filme, ${have.size} waren schon im Katalog, ${summary(r)}. Filme im Katalog: ${await catalogMovieCount()}.`,
+    };
+  } catch (e) {
+    return { error: "Fehler beim Import: " + (e instanceof Error ? e.message : String(e)) };
+  }
 }

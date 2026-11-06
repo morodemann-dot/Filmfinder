@@ -73,6 +73,12 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
             {title.directors.join(", ")}
           </div>
         )}
+        {title.cast_names && title.cast_names.length > 0 && (
+          <div className="small" style={{ marginBottom: 4 }}>
+            <span className="muted">Mit: </span>
+            {title.cast_names.slice(0, 6).join(", ")}
+          </div>
+        )}
         {title.studios && title.studios.length > 0 && (
           <div className="small" style={{ marginBottom: 10 }}>
             <span className="muted">Studios: </span>

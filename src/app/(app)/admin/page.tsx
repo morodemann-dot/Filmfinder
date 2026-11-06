@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { AwardsForm, DirectorForm, FranchiseForm, HollywoodForm, MaintenanceForms } from "./ImportForm";
+import { ActorForm, AwardsForm, DirectorForm, FranchiseForm, HollywoodForm, MaintenanceForms } from "./ImportForm";
 import { removeAllSeries } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 
@@ -30,6 +30,7 @@ export default async function AdminPage() {
         <AwardsForm />
         <FranchiseForm />
         <DirectorForm />
+        <ActorForm />
         <MaintenanceForms />
 
         {(shows.count ?? 0) > 0 && (

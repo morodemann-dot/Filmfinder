@@ -99,7 +99,7 @@ type Details = {
   popularity?: number;
   last_episode_to_air?: { runtime?: number | null } | null;
   production_companies?: { id: number; name: string }[];
-  credits?: { crew?: { job: string; name: string }[] };
+  credits?: { crew?: { job: string; name: string }[]; cast?: { name: string; order: number }[] };
   created_by?: { name: string }[];
   belongs_to_collection?: { id: number; name: string } | null;
   imdb_id?: string | null;
@@ -161,6 +161,7 @@ export async function fetchTitleRow(type: MediaType, id: number) {
         ? [...new Set((d.credits?.crew ?? []).filter((c) => c.job === "Director").map((c) => c.name))]
         : (d.created_by ?? []).map((c) => c.name),
     studios: (d.production_companies ?? []).map((c) => c.name),
+    cast_names: (d.credits?.cast ?? []).sort((a, b) => a.order - b.order).slice(0, 8).map((c) => c.name),
     collection_id: type === "movie" ? (d.belongs_to_collection?.id ?? null) : null,
     collection_name: type === "movie" ? (d.belongs_to_collection?.name ?? null) : null,
     imdb_id: type === "movie" ? (d.imdb_id ?? null) : null,
@@ -306,4 +307,30 @@ export async function keywordMovies(query: string, minVotes: number) {
 export async function tmdbIdFromImdb(imdbId: string) {
   const r = await tmdb<{ movie_results: { id: number }[] }>(`/find/${imdbId}`, { external_source: "imdb_id" });
   return r.movie_results[0]?.id ?? null;
+}
+
+type CastCredits = {
+  cast: { id: number; release_date?: string; vote_count?: number; order?: number; character?: string; genre_ids?: number[] }[];
+};
+
+// Sucht eine Schauspielerin / einen Schauspieler und liefert ihre/seine Filme ab 1980.
+// onlyLead = nur Rollen weit vorne in der Besetzungsliste (Haupt- und große Nebenrollen).
+export async function actorMovies(name: string, minVotes: number, onlyLead: boolean) {
+  const s = await tmdb<PersonSearch>("/search/person", { query: name.normalize("NFC").replace(/\s+/g, " ").trim() });
+  const person = s.results.find((p) => p.known_for_department === "Acting") ?? s.results[0];
+  if (!person) return null;
+  const c = await tmdb<CastCredits>(`/person/${person.id}/movie_credits`);
+  const ids = [
+    ...new Set(
+      c.cast
+        .filter((m) => (m.release_date ?? "") >= "1980-01-01" && (m.release_date ?? "") <= today())
+        .filter((m) => (m.vote_count ?? 0) >= minVotes)
+        .filter((m) => !/\b(himself|herself|self|narrator|voice)\b/i.test(m.character ?? ""))
+        .filter((m) => !(m.genre_ids ?? []).includes(99)) // keine Dokumentationen
+        .filter((m) => !onlyLead || (m.order ?? 99) <= 4)
+        .sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0))
+        .map((m) => m.id),
+    ),
+  ];
+  return { person: person.name, ids };
 }
