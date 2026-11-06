@@ -91,7 +91,7 @@ export default async function ForYouPage() {
           <div className="tags" style={{ marginTop: 8, marginBottom: 0 }}>
             {learned.map((p) => (
               <span key={p.key} className="tag">
-                {p.label} · {p.n} Filme · Ø {p.avgStars?.toLocaleString("de-DE", { maximumFractionDigits: 1 })}★
+                {p.label} · {p.n} Filme · Ø {p.avgScore?.toLocaleString("de-DE", { maximumFractionDigits: 1 })}
               </span>
             ))}
           </div>

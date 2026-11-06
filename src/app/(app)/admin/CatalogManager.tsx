@@ -1,0 +1,168 @@
+"use client";
+
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import Poster from "@/components/Poster";
+import { deleteTitles } from "@/app/actions";
+
+export type ManageTitle = {
+  id: number;
+  title: string;
+  release_year: number | null;
+  media_type: string;
+  poster_path: string | null;
+  created_at: string;
+  oscars: string[] | null;
+};
+
+const SORTS = { neu: "Zuletzt hinzugefügt", titel: "Titel A–Z", jahr: "Erscheinungsjahr" } as const;
+
+// Alle Titel im Katalog: suchen, auswählen, entfernen.
+export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<keyof typeof SORTS>("neu");
+  const [kind, setKind] = useState<"alle" | "movie" | "tv">("alle");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [block, setBlock] = useState(true);
+  const [confirming, setConfirming] = useState(false);
+  const [pending, start] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [limit, setLimit] = useState(200);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = titles.filter(
+      (t) => (kind === "alle" || t.media_type === kind) && (!q || t.title.toLowerCase().includes(q) || String(t.release_year) === q),
+    );
+    if (sort === "titel") list.sort((a, b) => a.title.localeCompare(b.title, "de"));
+    else if (sort === "jahr") list.sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0));
+    else list.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    return list;
+  }, [titles, query, sort, kind]);
+
+  const allVisibleSelected = visible.length > 0 && visible.every((t) => selected.has(t.id));
+
+  function toggle(id: number) {
+    setConfirming(false);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setConfirming(false);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visible.forEach((t) => next.delete(t.id));
+      else visible.forEach((t) => next.add(t.id));
+      return next;
+    });
+  }
+
+  function remove(ids: number[]) {
+    setError(null);
+    setMessage(null);
+    start(async () => {
+      try {
+        const r = await deleteTitles(ids, block);
+        setMessage(`${r.deleted} ${r.deleted === 1 ? "Titel" : "Titel"} entfernt${block ? " und gesperrt" : ""}.`);
+        setSelected(new Set());
+        setConfirming(false);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    });
+  }
+
+  return (
+    <>
+      <div className="sticky-bar">
+        <input
+          className="input"
+          type="search"
+          placeholder={`In ${titles.length} Titeln suchen …`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <div className="toolbar" style={{ margin: 0 }}>
+          <label className="pill">
+            {SORTS[sort]}
+            <select value={sort} onChange={(e) => setSort(e.target.value as keyof typeof SORTS)} aria-label="Sortierung">
+              {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </label>
+          <label className="pill">
+            {kind === "alle" ? "Filme & Serien" : kind === "movie" ? "Nur Filme" : "Nur Serien"}
+            <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} aria-label="Art">
+              <option value="alle">Filme & Serien</option>
+              <option value="movie">Nur Filme</option>
+              <option value="tv">Nur Serien</option>
+            </select>
+          </label>
+          <button className="pill" onClick={toggleAllVisible}>
+            {allVisibleSelected ? "Auswahl aufheben" : `Alle ${visible.length} auswählen`}
+          </button>
+        </div>
+
+        {selected.size > 0 && (
+          <div className="panel" style={{ padding: 12, display: "grid", gap: 10 }}>
+            <label className="row small">
+              <input type="checkbox" checked={block} onChange={(e) => setBlock(e.target.checked)} style={{ width: 20, height: 20, accentColor: "var(--accent)" }} />
+              Nicht erneut importieren (auf Sperrliste setzen)
+            </label>
+            {!confirming ? (
+              <button className="btn danger" onClick={() => setConfirming(true)} disabled={pending}>
+                {selected.size} {selected.size === 1 ? "Titel" : "Titel"} entfernen
+              </button>
+            ) : (
+              <div className="row">
+                <button className="btn danger" onClick={() => remove([...selected])} disabled={pending}>
+                  {pending ? "Entferne …" : `Ja, ${selected.size} endgültig entfernen`}
+                </button>
+                <button className="btn" onClick={() => setConfirming(false)} disabled={pending}>Abbrechen</button>
+              </div>
+            )}
+            <div className="caption">Bewertungen zu diesen Titeln werden bei allen Nutzern mit entfernt.</div>
+          </div>
+        )}
+        {message && <div className="success">{message}</div>}
+        {error && <div className="error">{error}</div>}
+      </div>
+
+      <div className="caption" style={{ marginBottom: 8 }}>
+        {visible.length} Titel{selected.size > 0 && ` · ${selected.size} ausgewählt`}
+      </div>
+
+      <div className="manage-list">
+        {visible.slice(0, limit).map((t) => (
+          <div key={t.id} className="manage-item">
+            <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} aria-label={`${t.title} auswählen`} />
+            <Poster path={t.poster_path} title="" size="w185" />
+            <a href={`/titel/${t.id}`} style={{ minWidth: 0 }}>
+              <div className="manage-title">{t.title}</div>
+              <div className="caption">
+                {[t.media_type === "tv" ? "Serie" : "Film", t.release_year, (t.oscars?.length ?? 0) > 0 ? `🏆 ${t.oscars!.length}` : null]
+                  .filter(Boolean).join(" · ")}
+              </div>
+            </a>
+            <button className="icon-btn" title="Entfernen" aria-label={`${t.title} entfernen`}
+              onClick={() => { setSelected(new Set([t.id])); setConfirming(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      {visible.length > limit && (
+        <div className="pager">
+          <button className="btn" onClick={() => setLimit((l) => l + 300)}>Weitere {Math.min(300, visible.length - limit)} anzeigen</button>
+        </div>
+      )}
+    </>
+  );
+}

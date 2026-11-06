@@ -196,3 +196,48 @@ code { font-size: 0.85em; background: var(--surface-2); padding: 1px 5px; border
 
 .empty { text-align: center; padding: 44px 16px; color: var(--muted); }
 .pager { display: flex; justify-content: center; gap: 10px; margin-top: 26px; }
+
+/* ---------- Punkte 1–10 ---------- */
+.score { display: grid; gap: 8px; justify-items: center; }
+.score-row { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; width: 100%; max-width: 420px; }
+.score-row button {
+  height: 44px; border: 0; border-radius: 10px; background: var(--surface-2);
+  font-size: 1rem; font-weight: 500; cursor: pointer; touch-action: manipulation;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+.score-row button:active { transform: scale(0.9); }
+.score-row button.on { font-weight: 700; transform: scale(1.08); }
+.score-label { min-height: 22px; font-size: 0.95rem; }
+.score-label strong { font-size: 1.1rem; }
+
+/* Kurze Bestätigung über dem Plakat */
+.flash {
+  position: absolute; inset: 0; margin: 0 auto; max-width: 230px; border-radius: 12px;
+  background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  animation: pop 0.2s ease-out;
+}
+.flash-num { font-size: 4rem; font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
+@keyframes pop { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+
+/* ---------- Katalog verwalten ---------- */
+.manage-list { display: grid; gap: 2px; background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.manage-item { display: grid; grid-template-columns: 28px 36px 1fr auto; gap: 10px; align-items: center; padding: 8px 12px; background: var(--surface); }
+.manage-item + .manage-item { border-top: 0.5px solid var(--line); }
+.manage-item .poster { border-radius: 4px; font-size: 0.5rem; padding: 2px; }
+.manage-item input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); }
+.manage-title { font-size: 0.9rem; font-weight: 500; line-height: 1.2; }
+.icon-btn { border: 0; background: transparent; color: var(--muted); width: 36px; height: 36px; border-radius: 18px; cursor: pointer; font-size: 1rem; }
+.icon-btn:hover { background: var(--surface-2); color: var(--danger); }
+.sticky-bar {
+  position: sticky; top: 0; z-index: 5; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px); padding: 10px 0; margin-bottom: 10px; display: grid; gap: 10px;
+}
+.btn.danger { background: var(--danger); color: #fff; font-weight: 700; }
+.segmented .seg-link {
+  display: flex; align-items: center; justify-content: center; height: 30px; border-radius: 7px;
+  font-size: 0.88rem; font-weight: 500;
+}
+.segmented .seg-link[aria-pressed="true"] { background: #636366; font-weight: 700; }
+/* Formulare im Katalog ohne doppelte Überschriften-Abstände */
+.panel h2:first-child { margin-top: 0; }

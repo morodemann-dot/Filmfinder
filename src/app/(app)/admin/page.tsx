@@ -1,49 +1,64 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ActorForm, AwardsForm, DirectorForm, FranchiseForm, HollywoodForm, MaintenanceForms } from "./ImportForm";
-import { removeAllSeries } from "@/app/actions";
+import AddPanel from "./AddPanel";
+import CatalogManager, { type ManageTitle } from "./CatalogManager";
+import { clearBlocklist } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/fetchAll";
 
 // Der Import darf bis zu 60 Sekunden dauern.
 export const maxDuration = 60;
 
-// Katalog-Verwaltung: nur für Admins (E-Mail steht in ADMIN_EMAILS).
-export default async function AdminPage() {
+// Katalog: nur für Admins (E-Mail steht in ADMIN_EMAILS).
+// Zwei Bereiche: "Hinzufügen" und "Verwalten".
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ bereich?: string }> }) {
   const user = await getUser();
   if (!isAdmin(user?.email)) notFound();
+  const { bereich } = await searchParams;
+  const manage = bereich === "verwalten";
 
   const admin = createAdminClient();
-  const [movies, shows] = await Promise.all([
+  const [movies, shows, blocked] = await Promise.all([
     admin.from("titles").select("id", { count: "exact", head: true }).eq("media_type", "movie"),
     admin.from("titles").select("id", { count: "exact", head: true }).eq("media_type", "tv"),
+    admin.from("excluded_titles").select("tmdb_id", { count: "exact", head: true }),
   ]);
+
+  const titles = manage
+    ? await fetchAll<ManageTitle>((from, to) =>
+        admin.from("titles").select("id,title,release_year,media_type,poster_path,created_at,oscars").range(from, to),
+      )
+    : [];
 
   return (
     <>
-      <h1>Katalog füllen</h1>
-      <p className="muted">
-        Aktuell: <strong>{movies.count ?? 0}</strong> Filme und <strong>{shows.count ?? 0}</strong> Serien.
-        Doppelte Titel werden automatisch erkannt.
+      <h1>Katalog</h1>
+      <p className="caption" style={{ marginTop: -4 }}>
+        {movies.count ?? 0} Filme · {shows.count ?? 0} Serien
+        {(blocked.count ?? 0) > 0 && ` · ${blocked.count} gesperrt`}
       </p>
 
-      <div style={{ display: "grid", gap: 16 }}>
-        <HollywoodForm />
-        <AwardsForm />
-        <FranchiseForm />
-        <DirectorForm />
-        <ActorForm />
-        <MaintenanceForms />
-
-        {(shows.count ?? 0) > 0 && (
-          <form action={removeAllSeries} className="panel">
-            <h2 style={{ marginTop: 0 }}>Serien entfernen</h2>
-            <p className="muted small" style={{ marginTop: 0 }}>
-              Entfernt alle {shows.count} Serien aus dem Katalog – inklusive aller Bewertungen dazu.
-              Das lässt sich nicht rückgängig machen.
-            </p>
-            <button className="btn">Alle Serien entfernen</button>
-          </form>
-        )}
+      <div className="segmented" style={{ margin: "14px 0 20px", maxWidth: 360 }}>
+        <Link href="/admin" aria-pressed={!manage} className="seg-link">Hinzufügen</Link>
+        <Link href="/admin?bereich=verwalten" aria-pressed={manage} className="seg-link">Verwalten</Link>
       </div>
+
+      {manage ? (
+        <>
+          <CatalogManager titles={titles} />
+          {(blocked.count ?? 0) > 0 && (
+            <form action={clearBlocklist} className="panel" style={{ marginTop: 24 }}>
+              <div className="eyebrow">Sperrliste</div>
+              <p className="caption">
+                {blocked.count} entfernte Titel werden bei Importen übersprungen. Leeren, wenn sie wieder erlaubt sein sollen.
+              </p>
+              <button className="btn">Sperrliste leeren</button>
+            </form>
+          )}
+        </>
+      ) : (
+        <AddPanel />
+      )}
     </>
   );
 }

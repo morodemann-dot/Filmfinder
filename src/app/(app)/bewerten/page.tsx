@@ -20,7 +20,7 @@ export default async function RatePage() {
     <>
       <h1>Schnell bewerten</h1>
       <p className="muted small" style={{ marginTop: 0 }}>
-        Gesehen? Gib Sterne. Nicht gesehen? Einfach weiter – oder auf die Merkliste.
+        Gesehen? Gib 1–10 Punkte. Nicht gesehen? Einfach weiter – oder auf die Merkliste.
         Bisher eingeordnet: <strong>{done ?? 0}</strong>
       </p>
       <QuickRate titles={(data ?? []) as Title[]} />

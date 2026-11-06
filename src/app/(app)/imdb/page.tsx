@@ -8,8 +8,8 @@ export default function ImdbPage() {
     <>
       <h1>IMDb-Bewertungen importieren</h1>
       <p className="muted">
-        Übernimmt deine bei IMDb bewerteten Filme samt Bewertung. IMDb 1–10 entspricht hier ½–5 Sternen
-        (z. B. IMDb 8 = 4 Sterne). Filme, die du hier in der App schon mit Sternen bewertet hast, bleiben unverändert.
+        Übernimmt deine bei IMDb bewerteten Filme samt Bewertung – die Punkte 1–10 werden eins zu eins übernommen.
+        Filme, die du hier in der App schon bewertet hast, bleiben unverändert.
         Serien werden vorerst übersprungen.
       </p>
 

@@ -159,6 +159,12 @@ export async function importList(_: FormState, formData: FormData): Promise<Form
 // Holt Details zu vielen Filmen, sortiert Netflix (und optional kleine Studios) aus und speichert.
 async function importMovieIds(ids: number[], onlyMajor: boolean) {
   const admin = createAdminClient();
+  // Filme auf der Sperrliste (bewusst entfernt) nicht wieder importieren
+  const { data: blocked } = ids.length
+    ? await admin.from("excluded_titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", ids)
+    : { data: [] };
+  const blockedSet = new Set((blocked ?? []).map((b) => b.tmdb_id as number));
+  ids = ids.filter((x) => !blockedSet.has(x));
   const results = await mapLimit(ids, 8, (id) => fetchTitleRow("movie", id));
   let failed = 0, netflix = 0, small = 0;
   const rows: Awaited<ReturnType<typeof fetchTitleRow>>[] = [];
@@ -443,7 +449,7 @@ export async function importImdbChunk(items: ImdbItem[]): Promise<ImdbChunkResul
     added = rows.length;
   }
 
-  // 3) Bewertungen übernehmen – vorhandene Sterne-Bewertungen in der App bleiben unangetastet
+  // 3) Bewertungen übernehmen – vorhandene Bewertungen in der App bleiben unangetastet
   const titleIds = list.map((i) => idByImdb.get(i.imdbId)).filter((x): x is number => !!x);
   const { data: existing } = await supabase
     .from("user_title_feedback").select("title_id,rating").eq("user_id", user.id).in("title_id", titleIds);
@@ -528,4 +534,39 @@ export async function importActor(_: FormState, formData: FormData): Promise<For
   } catch (e) {
     return { error: "Fehler beim Import: " + (e instanceof Error ? e.message : String(e)) };
   }
+}
+
+// ---------------- Katalog verwalten ----------------
+
+// Entfernt Titel aus dem Katalog (inkl. aller Bewertungen dazu). Nur für Admins.
+// block = auf die Sperrliste setzen, damit Importe sie nicht wieder hinzufügen.
+export async function deleteTitles(ids: number[], block: boolean): Promise<{ deleted: number }> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
+  const admin = createAdminClient();
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += 200) {
+    const part = ids.slice(i, i + 200);
+    if (block) {
+      const { data } = await admin.from("titles").select("media_type,tmdb_id,title").in("id", part);
+      if (data?.length) {
+        const { error } = await admin.from("excluded_titles").upsert(data, { onConflict: "media_type,tmdb_id" });
+        if (error) throw new Error(error.message + " (wurde die Ergänzung 7 im SQL Editor ausgeführt?)");
+      }
+    }
+    const { error, count } = await admin.from("titles").delete({ count: "exact" }).in("id", part);
+    if (error) throw new Error(error.message);
+    deleted += count ?? 0;
+  }
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { deleted };
+}
+
+// Sperrliste leeren (entfernte Filme dürfen wieder importiert werden).
+export async function clearBlocklist(): Promise<void> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) return;
+  await createAdminClient().from("excluded_titles").delete().neq("tmdb_id", -1);
+  revalidatePath("/admin");
 }

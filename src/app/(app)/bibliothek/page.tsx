@@ -1,7 +1,7 @@
 import Link from "next/link";
 import TitleCard from "@/components/TitleCard";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { STATUS_LABEL, formatStars, type Status, type Title } from "@/lib/types";
+import { STATUS_LABEL, formatScore, type Status, type Title } from "@/lib/types";
 
 // Persönliche Bibliothek: alles, was du schon eingeordnet hast.
 
@@ -40,7 +40,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       {shown.length ? (
         <div className="grid">
           {shown.map((r) => (
-            <TitleCard key={r.titles!.id} t={r.titles!} badge={formatStars(r.rating)} />
+            <TitleCard key={r.titles!.id} t={r.titles!} badge={formatScore(r.rating)} />
           ))}
         </div>
       ) : (

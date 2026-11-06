@@ -54,9 +54,9 @@ export function formatRuntime(seconds: number | null) {
   return m ? `${h} Std. ${m} Min.` : `${h} Std.`;
 }
 
-export function formatStars(rating: number | null) {
+export function formatScore(rating: number | null) {
   if (!rating) return null;
-  return (rating / 2).toLocaleString("de-DE") + " ★";
+  return `${rating}/10`;
 }
 
 // Preiskategorien ins Deutsche übersetzen (unbekannte bleiben englisch).

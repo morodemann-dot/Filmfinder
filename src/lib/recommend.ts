@@ -48,9 +48,9 @@ export type Preference = {
   key: string;
   kind: FeatureKind;
   label: string;
-  pref: number; // in Sternen über/unter deinem Schnitt (vorsichtig geschätzt)
+  pref: number; // in Punkten über/unter deinem Schnitt (vorsichtig geschätzt)
   n: number; // Anzahl bewerteter Filme mit diesem Merkmal
-  avgStars: number | null; // dein Durchschnitt bei diesen Filmen
+  avgScore: number | null; // dein Durchschnitt (1–10) bei diesen Filmen
 };
 
 export type Recommendation = {
@@ -87,12 +87,12 @@ export function buildProfile(rated: RatedTitle[]) {
       key,
       kind: a.f.kind,
       label: a.f.label,
-      pref: a.sumWD / (a.sumW + SHRINK) / 2, // /2: von 1–10 in Sterne umrechnen
+      pref: a.sumWD / (a.sumW + SHRINK) / 2, // halbiert, damit die Gewichte im gleichen Rahmen bleiben
       n: a.n,
-      avgStars: a.n ? a.sumR / a.n / 2 : null,
+      avgScore: a.n ? a.sumR / a.n : null,
     });
   }
-  return { prefs, ratedCount: withRating.length, meanStars: mean / 2 };
+  return { prefs, ratedCount: withRating.length, meanScore: mean };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -105,7 +105,7 @@ const KIND_LABEL: Record<FeatureKind, string> = {
 };
 
 function reasonText(p: Preference) {
-  const stars = p.avgStars ? `Ø ${p.avgStars.toLocaleString("de-DE", { maximumFractionDigits: 1 })}★` : "";
+  const stars = p.avgScore ? `Ø ${p.avgScore.toLocaleString("de-DE", { maximumFractionDigits: 1 })}` : "";
   const evidence = p.n ? `${p.n} ${p.n === 1 ? "Film" : "Filme"} bewertet${stars ? `, ${stars}` : ""}` : "aus deiner Merkliste";
   const head = KIND_LABEL[p.kind] ? `${KIND_LABEL[p.kind]}: ${p.label}` : p.label;
   return `${head} (${evidence})`;

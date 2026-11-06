@@ -186,7 +186,7 @@ export function AwardsForm() {
 
   return (
     <div className="panel">
-      <h2 style={{ marginTop: 0 }}>🏆 Oscar- & Golden-Globe-Gewinner seit 1980</h2>
+      <h2 style={{ marginTop: 0 }}>Oscar- & Golden-Globe-Gewinner seit 1980</h2>
       <p className="muted small" style={{ marginTop: 0 }}>
         Alle Filme, die in irgendeiner Kategorie gewonnen haben – auch Preise an Personen für einen Film
         (z. B. „Bester Hauptdarsteller“). Quelle: Wikidata. Netflix-Produktionen werden aussortiert.
