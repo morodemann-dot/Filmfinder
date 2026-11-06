@@ -241,3 +241,45 @@ code { font-size: 0.85em; background: var(--surface-2); padding: 1px 5px; border
 .segmented .seg-link[aria-pressed="true"] { background: #636366; font-weight: 700; }
 /* Formulare im Katalog ohne doppelte Überschriften-Abstände */
 .panel h2:first-child { margin-top: 0; }
+
+/* ---------- Für dich ---------- */
+.lead { font-size: 1.15rem; font-weight: 300; color: #d1d1d6; margin: -4px 0 16px; }
+.moods { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+@media (min-width: 640px) { .moods { grid-template-columns: repeat(3, 1fr); } }
+.mood {
+  position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px;
+  min-height: 74px; padding: 12px 14px; border-radius: var(--radius);
+  background: linear-gradient(140deg, color-mix(in srgb, var(--tint) 28%, var(--surface)) 0%, var(--surface) 75%);
+  border: 1.5px solid transparent; transition: transform 0.12s ease;
+}
+.mood:active { transform: scale(0.97); }
+.mood.on { border-color: var(--tint); background: linear-gradient(140deg, color-mix(in srgb, var(--tint) 55%, var(--surface)) 0%, var(--surface) 90%); }
+.mood-label { font-weight: 700; font-size: 0.98rem; letter-spacing: -0.01em; }
+.mood-hint { font-size: 0.72rem; font-weight: 300; color: #c7c7cc; }
+a.pill { text-decoration: none; }
+
+.hero { display: grid; grid-template-columns: 120px 1fr; gap: 16px; background: var(--surface); border-radius: 18px; padding: 14px; align-items: start; }
+@media (min-width: 640px) { .hero { grid-template-columns: 180px 1fr; padding: 18px; } }
+.hero-poster .poster { border-radius: 10px; }
+.hero-title { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin: 4px 0 4px; }
+
+details summary { list-style: none; }
+details summary::-webkit-details-marker { display: none; }
+details summary::after { content: " ›"; }
+details[open] summary::after { content: " ⌄"; }
+
+/* ---------- Bewerten: feste Höhen, damit nichts springt ---------- */
+.quick .poster { width: min(220px, 30vh); max-width: none; margin: 0 auto 14px; }
+.quick .flash { width: min(220px, 30vh); max-width: none; }
+.quick h2 {
+  height: 2.4em; line-height: 1.2; margin: 0 0 2px; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.quick .quick-meta { height: 1.3em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.quick .hint-line { min-height: 1.4em; }
+@media (max-width: 639px) { .mood:last-child:nth-child(odd) { grid-column: span 2; min-height: 60px; } }
+.quick .poster, .quick .flash { width: min(200px, 24vh); }
+.quick h2 { font-size: 1.15rem; }
+.quick .progress { margin-bottom: 8px; }
+.quick .row .btn { min-height: 36px; padding: 0 13px; font-size: 0.85rem; }

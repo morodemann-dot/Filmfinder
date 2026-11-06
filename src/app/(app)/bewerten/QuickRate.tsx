@@ -105,8 +105,8 @@ export default function QuickRate({ titles: initial }: { titles: Title[] }) {
         )}
       </div>
 
-      <h2 style={{ marginBottom: 2 }}>{t.title}</h2>
-      <div className="caption">
+      <h2><span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span></h2>
+      <div className="caption quick-meta">
         {[t.format, t.release_year, t.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
       </div>
 
@@ -126,9 +126,9 @@ export default function QuickRate({ titles: initial }: { titles: Title[] }) {
       <div className="row" style={{ marginTop: 6 }}>
         <button className="btn ghost" onClick={() => answer("gesehen")}>Gesehen, ohne Bewertung</button>
       </div>
-      {current && !flash && (
-        <p className="caption">Bereits beantwortet – eine neue Auswahl überschreibt die alte.</p>
-      )}
+      <p className="caption hint-line">
+        {current && !flash ? "Bereits beantwortet – eine neue Auswahl überschreibt die alte." : ""}
+      </p>
       {error && <p className="error">{error}</p>}
     </div>
   );

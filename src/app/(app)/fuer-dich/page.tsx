@@ -3,38 +3,60 @@ import Poster from "@/components/Poster";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
 import { buildProfile, recommend, topPreferences, type RatedTitle, type Recommendation } from "@/lib/recommend";
-import type { Title } from "@/lib/types";
+import { MOODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
+import { formatRuntime, type Title } from "@/lib/types";
+
+// "Für dich": erst die Stimmung wählen, dann gibt's einen klaren Tipp + ein paar Alternativen.
 
 const COLS =
-  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity";
+  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds";
 const MIN_RATINGS = 10;
 
-function RecCard({ r }: { r: Recommendation }) {
+type SP = { stimmung?: string; zeit?: string; modus?: string };
+
+function href(sp: SP, change: Partial<SP>) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries({ ...sp, ...change })) if (v) p.set(k, v);
+  const s = p.toString();
+  return s ? `/fuer-dich?${s}` : "/fuer-dich";
+}
+
+function Hero({ r }: { r: Recommendation }) {
   const t = r.title;
   return (
-    <Link href={`/titel/${t.id}`} className="rec">
-      <div className="rec-poster">
-        <Poster path={t.poster_path} title={t.title} size="w185" />
-      </div>
-      <div>
-        <div className="rec-title">{t.title}</div>
-        <div className="caption">{[t.release_year, t.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}</div>
-        {r.reasons.length > 0 && (
-          <ul className="reasons">
-            {r.reasons.map((x) => <li key={x}>{x}</li>)}
-          </ul>
-        )}
-        {r.coverage < 0.4 && <div className="caption">Noch wenig Daten zu diesem Film – eher unsicher.</div>}
+    <Link href={`/titel/${t.id}`} className="hero">
+      <div className="hero-poster"><Poster path={t.poster_path} title={t.title} size="w342" /></div>
+      <div className="hero-body">
+        <div className="eyebrow" style={{ color: "var(--accent)" }}>Unser Tipp</div>
+        <div className="hero-title">{t.title}</div>
+        <div className="caption">
+          {[t.release_year, formatRuntime(t.runtime_seconds), t.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
+        </div>
+        <ul className="reasons">{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>
       </div>
     </Link>
   );
 }
 
-export default async function ForYouPage() {
+function Tile({ r }: { r: Recommendation }) {
+  const t = r.title;
+  return (
+    <Link href={`/titel/${t.id}`} className="card">
+      <Poster path={t.poster_path} title={t.title} size="w185" />
+      <div className="card-title">{t.title}</div>
+      <div className="card-meta">{r.reasons[0]?.replace(/ \(.*\)$/, "") ?? t.release_year}</div>
+    </Link>
+  );
+}
+
+export default async function ForYouPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams;
+  const mood = MOODS.find((m) => m.key === sp.stimmung) ?? null;
+  const time = (sp.zeit && sp.zeit in TIMES ? sp.zeit : "egal") as TimeKey;
+  const surprise = sp.modus === "ueberrasch";
+
   const supabase = await createClient();
   const user = await getUser();
-
-  // Deine Einträge (mit Filmdaten) und der ganze Katalog
   const [mine, catalog] = await Promise.all([
     fetchAll<{ status: string; rating: number | null; titles: Title | null }>((from, to) =>
       supabase.from("user_title_feedback").select(`status,rating,titles(${COLS})`).eq("user_id", user!.id).range(from, to),
@@ -64,54 +86,82 @@ export default async function ForYouPage() {
     );
   }
 
-  const recs = recommend(catalog.filter((t) => !seen.has(t.id)), prefs).filter((r) => r.score > 0.1 && r.reasons.length > 0);
-  const top = recs.slice(0, 30);
-  const topIds = new Set(top.map((r) => r.title.id));
-
-  // Entdeckungen: passen zu dir, sind aber weniger bekannt
+  // Kandidaten: ungesehen + passend zu Stimmung und Zeit
   const pops = catalog.map((t) => t.popularity ?? 0).sort((a, b) => a - b);
   const medianPop = pops[Math.floor(pops.length / 2)] ?? 0;
-  const discoveries = recs
-    .filter((r) => !topIds.has(r.title.id) && (r.title.popularity ?? 0) < medianPop && r.reasons.length > 0)
-    .slice(0, 20);
-
-  const learned = topPreferences(prefs);
+  const candidates = catalog.filter(
+    (t) => !seen.has(t.id) && (!mood || matchesMood(t, mood)) && matchesTime(t, time) &&
+      (!surprise || (t.popularity ?? 0) < medianPop),
+  );
+  const recs = recommend(candidates, prefs).filter((r) => r.score > 0.1 && r.reasons.length > 0);
+  const [hero, ...rest] = recs;
+  const more = rest.slice(0, 12);
+  const learned = topPreferences(prefs, 8);
 
   return (
     <>
       <h1>Für dich</h1>
-      <p className="caption" style={{ marginTop: -4 }}>
-        Basierend auf {ratedCount} Bewertungen. Version 1 – nutzt Genre, Regie, Besetzung, Filmreihen und Preise.
-        Mit Stufe 2 kommen Stimmung, Komplexität, Humor & Co. dazu.
-      </p>
+      <p className="lead">Worauf hast du heute Lust?</p>
 
-      {learned.length > 0 && (
-        <div className="panel" style={{ margin: "14px 0 22px" }}>
-          <div className="eyebrow">Was die App über dich gelernt hat</div>
-          <div className="tags" style={{ marginTop: 8, marginBottom: 0 }}>
-            {learned.map((p) => (
-              <span key={p.key} className="tag">
-                {p.label} · {p.n} Filme · Ø {p.avgScore?.toLocaleString("de-DE", { maximumFractionDigits: 1 })}
-              </span>
-            ))}
-          </div>
+      <div className="moods">
+        {MOODS.map((m) => {
+          const on = mood?.key === m.key;
+          return (
+            <Link key={m.key} href={href(sp, { stimmung: on ? undefined : m.key })} className={`mood ${on ? "on" : ""}`}
+              style={{ ["--tint" as string]: m.tint }} aria-current={on}>
+              <span className="mood-label">{m.label}</span>
+              <span className="mood-hint">{m.hint}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="toolbar" style={{ marginTop: 14 }}>
+        <div className="segmented" style={{ minWidth: 260 }}>
+          <Link href={href(sp, { modus: undefined })} aria-pressed={!surprise} className="seg-link">Sichere Wahl</Link>
+          <Link href={href(sp, { modus: "ueberrasch" })} aria-pressed={surprise} className="seg-link">Überrasch mich</Link>
         </div>
-      )}
+        <div className="row" style={{ gap: 6 }}>
+          {(Object.keys(TIMES) as TimeKey[]).map((k) => (
+            <Link key={k} href={href(sp, { zeit: k === "egal" ? undefined : k })}
+              className={`pill ${time === k ? "on" : ""}`}>{k === "egal" ? "Jede Länge" : TIMES[k].label}</Link>
+          ))}
+        </div>
+      </div>
 
-      <h2 className="section">Deine Top-Treffer</h2>
-      {top.length ? (
-        <div className="rec-list">{top.map((r) => <RecCard key={r.title.id} r={r} />)}</div>
-      ) : (
-        <p className="caption">Noch keine passenden Filme gefunden – bewerte ein paar mehr oder erweitere den Katalog.</p>
-      )}
+      <div style={{ marginTop: 18 }}>
+        {hero ? (
+          <>
+            <Hero r={hero} />
+            {more.length > 0 && (
+              <>
+                <h2 className="section">Ebenfalls passend</h2>
+                <div className="grid">{more.map((r) => <Tile key={r.title.id} r={r} />)}</div>
+              </>
+            )}
+          </>
+        ) : (
+          <div className="empty">
+            Dafür haben wir gerade nichts Passendes im Katalog. Probier eine andere Stimmung oder Länge
+            {surprise ? " – oder „Sichere Wahl“" : ""}.
+          </div>
+        )}
+      </div>
 
-      {discoveries.length > 0 && (
-        <>
-          <h2 className="section">Entdeckungen</h2>
-          <p className="caption" style={{ marginTop: -6 }}>Weniger bekannt, aber mit klarer Verbindung zu deinem Geschmack.</p>
-          <div className="rec-list">{discoveries.map((r) => <RecCard key={r.title.id} r={r} />)}</div>
-        </>
-      )}
+      <details className="panel" style={{ marginTop: 28 }}>
+        <summary className="eyebrow" style={{ cursor: "pointer" }}>Was die App über dich gelernt hat</summary>
+        <p className="caption">
+          Basierend auf {ratedCount} Bewertungen. Bisher berücksichtigt: Genre, Regie, Besetzung, Filmreihen und Preise.
+          Stimmungen beruhen vorerst auf Genres – mit Stufe 2 (KI-Merkmale wie Grundstimmung, Spannung, Humor) werden sie genauer.
+        </p>
+        <div className="tags" style={{ marginBottom: 0 }}>
+          {learned.map((p) => (
+            <span key={p.key} className="tag">
+              {p.label} · {p.n} Filme · Ø {p.avgScore?.toLocaleString("de-DE", { maximumFractionDigits: 1 })}
+            </span>
+          ))}
+        </div>
+      </details>
     </>
   );
 }
