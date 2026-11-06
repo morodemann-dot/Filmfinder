@@ -64,12 +64,12 @@ export default function ImdbImport() {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
-  const [stats, setStats] = useState({ added: 0, rated: 0, kept: 0, notFound: 0 });
+  const [stats, setStats] = useState({ added: 0, rated: 0, kept: 0, notFound: 0, blocked: 0 });
   const [finished, setFinished] = useState(false);
 
   async function onFile(file: File | undefined) {
     setError(null); setParsed(null); setFinished(false); setDone(0);
-    setStats({ added: 0, rated: 0, kept: 0, notFound: 0 });
+    setStats({ added: 0, rated: 0, kept: 0, notFound: 0, blocked: 0 });
     if (!file) return;
     try {
       setParsed(readImdbCsv(await file.text()));
@@ -81,11 +81,11 @@ export default function ImdbImport() {
   async function start() {
     if (!parsed) return;
     setRunning(true); setError(null);
-    const total = { added: 0, rated: 0, kept: 0, notFound: 0 };
+    const total = { added: 0, rated: 0, kept: 0, notFound: 0, blocked: 0 };
     try {
       for (let i = 0; i < parsed.items.length; i += CHUNK) {
         const r = await importImdbChunk(parsed.items.slice(i, i + CHUNK));
-        total.added += r.added; total.rated += r.rated; total.kept += r.kept; total.notFound += r.notFound.length;
+        total.added += r.added; total.rated += r.rated; total.kept += r.kept; total.notFound += r.notFound.length; total.blocked += r.blocked;
         setStats({ ...total });
         setDone(Math.min(parsed.items.length, i + CHUNK));
       }
@@ -131,6 +131,7 @@ export default function ImdbImport() {
             {stats.added} neu in den Katalog · {stats.rated} Bewertungen übernommen
             {stats.kept > 0 && <> · {stats.kept} schon in der App bewertet (unverändert)</>}
             {stats.notFound > 0 && <> · {stats.notFound} bei TMDB nicht gefunden</>}
+            {stats.blocked > 0 && <> · {stats.blocked} übersprungen, weil aus dem Katalog aussortiert</>}
           </p>
         </>
       )}

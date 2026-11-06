@@ -141,7 +141,7 @@ export default function Curate({ genres }: { genres: string[] }) {
   });
 
   const progress = Math.min(1, Math.abs(dx) / THRESHOLD); // wie weit die oberste Karte gezogen ist
-  const activeFilters = (filter.genre ? 1 : 0) + (filter.decade ? 1 : 0) + (filter.noAwards ? 1 : 0);
+  const activeFilters = (filter.genre ? 1 : 0) + (filter.decade ? 1 : 0);
 
   return (
     <div className="curate">
@@ -180,11 +180,7 @@ export default function Curate({ genres }: { genres: string[] }) {
               ))}
             </div>
           </div>
-          <label className="row small">
-            <input type="checkbox" checked={!!filter.noAwards} onChange={(e) => setFilter({ ...filter, noAwards: e.target.checked || undefined })}
-              style={{ width: 20, height: 20, accentColor: "var(--accent)" }} />
-            Nur Filme ohne Oscar/Golden Globe
-          </label>
+          <div className="caption">Preisgekrönte Filme werden beim Aussortieren nicht angezeigt.</div>
         </div>
       )}
 

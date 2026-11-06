@@ -1,7 +1,7 @@
 import TitleCard from "@/components/TitleCard";
 import Poster from "@/components/Poster";
 import { addFromTmdb } from "@/app/actions";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { searchTmdb } from "@/lib/tmdb";
 import type { Title } from "@/lib/types";
 
@@ -14,6 +14,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   let local: Title[] = [];
   let remote: Awaited<ReturnType<typeof searchTmdb>> = [];
   let remoteError = false;
+  let blocked = new Set<string>();
 
   if (query.length >= 2) {
     const supabase = await createClient();
@@ -29,6 +30,12 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     try {
       const known = new Set(local.map((t) => `${t.media_type}-${t.tmdb_id}`));
       remote = (await searchTmdb(query)).filter((r) => !known.has(`${r.media_type}-${r.tmdb_id}`));
+      // Welche Treffer wurden bewusst aussortiert?
+      if (remote.length) {
+        const { data: ex } = await createAdminClient()
+          .from("excluded_titles").select("media_type,tmdb_id").in("tmdb_id", remote.map((r) => r.tmdb_id));
+        blocked = new Set((ex ?? []).map((e) => `${e.media_type}-${e.tmdb_id}`));
+      }
     } catch {
       remoteError = true;
     }
@@ -67,7 +74,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               {remote.map((r) => (
                 <form key={`${r.media_type}-${r.tmdb_id}`} action={addFromTmdb.bind(null, r.media_type, r.tmdb_id)}>
                   <button className="card" style={{ background: "none", border: 0, padding: 0, textAlign: "left", width: "100%", cursor: "pointer" }}>
-                    <Poster path={r.poster_path} title={r.title} size="w185" badge="+ hinzufügen" />
+                    <Poster path={r.poster_path} title={r.title} size="w185"
+                      badge={blocked.has(`${r.media_type}-${r.tmdb_id}`) ? "Aussortiert · trotzdem hinzufügen" : "+ hinzufügen"} />
                     <div className="card-title">{r.title}</div>
                     <div className="card-meta">
                       {[r.media_type === "movie" ? "Film" : "Serie", r.year].filter(Boolean).join(" · ")}

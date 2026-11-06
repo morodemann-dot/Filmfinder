@@ -113,6 +113,9 @@ export async function addFromTmdb(type: MediaType, tmdbId: number) {
     .maybeSingle();
   if (existing.data) redirect(`/titel/${existing.data.id}`);
 
+  // Bewusst hinzugefügt: falls aussortiert, von der Sperrliste nehmen
+  await admin.from("excluded_titles").delete().eq("media_type", type).eq("tmdb_id", tmdbId);
+
   const row = await fetchTitleRow(type, tmdbId);
   const { data, error } = await admin
     .from("titles")
@@ -406,7 +409,7 @@ export async function refreshOldMovies(): Promise<FormState> {
 // ---------------- IMDb-Import ----------------
 
 export type ImdbItem = { imdbId: string; rating: number | null };
-export type ImdbChunkResult = { added: number; rated: number; kept: number; notFound: string[] };
+export type ImdbChunkResult = { added: number; rated: number; kept: number; notFound: string[]; blocked: number };
 
 // Verarbeitet einen Teil (max. 40 Einträge) einer IMDb-Bewertungsdatei:
 // Film in den Katalog holen (falls nötig) und deine Bewertung übernehmen.
@@ -429,16 +432,26 @@ export async function importImdbChunk(items: ImdbItem[]): Promise<ImdbChunkResul
   const unknown = list.filter((i) => !idByImdb.has(i.imdbId));
   const notFound: string[] = [];
   let added = 0;
-  const looked = await mapLimit(unknown, 8, async (i) => {
-    const tmdbId = await tmdbIdFromImdb(i.imdbId);
+  // TMDB-IDs nachschlagen und aussortierte (gesperrte) Filme überspringen
+  const resolved = await mapLimit(unknown, 8, (i) => tmdbIdFromImdb(i.imdbId));
+  const tmdbIds = resolved.map((r) => (r.status === "fulfilled" ? r.value : null));
+  const candidateIds = tmdbIds.filter((x): x is number => !!x);
+  const { data: blockedRows } = candidateIds.length
+    ? await admin.from("excluded_titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", candidateIds)
+    : { data: [] };
+  const blockedSet = new Set((blockedRows ?? []).map((b) => b.tmdb_id as number));
+  let blocked = 0;
+  const looked = await mapLimit(unknown.map((i, k) => ({ i, tmdbId: tmdbIds[k] })), 8, async ({ i, tmdbId }) => {
     if (!tmdbId) return null;
+    if (blockedSet.has(tmdbId)) { blocked++; return "blocked" as const; }
     const row = await fetchTitleRow("movie", tmdbId);
     return { ...row, imdb_id: i.imdbId };
   });
   const rows: (Awaited<ReturnType<typeof fetchTitleRow>> & { imdb_id: string })[] = [];
   for (let k = 0; k < looked.length; k++) {
     const r = looked[k];
-    if (r.status === "fulfilled" && r.value) rows.push(r.value);
+    if (r.status === "fulfilled" && r.value === "blocked") continue;
+    if (r.status === "fulfilled" && r.value && r.value !== "blocked") rows.push(r.value);
     else notFound.push(unknown[k].imdbId);
   }
   if (rows.length) {
@@ -467,7 +480,7 @@ export async function importImdbChunk(items: ImdbItem[]): Promise<ImdbChunkResul
     if (e3) throw new Error(e3.message);
   }
 
-  return { added, rated: feedback.length, kept: hasRating.size, notFound };
+  return { added, rated: feedback.length, kept: hasRating.size, notFound, blocked };
 }
 
 export async function finishImdbImport() {
@@ -593,7 +606,8 @@ export async function getCurationBatch(f: CurationFilter, skip: number[]): Promi
     let q = admin.from("titles").select(CURATION_COLS, { count: "exact" }).is("kept_at", null);
     if (f.genre) q = q.contains("genres", [f.genre]);
     if (f.decade) q = q.gte("release_year", f.decade).lt("release_year", f.decade + 10);
-    if (f.noAwards) q = q.eq("oscars", "{}").eq("globes", "{}");
+    // Preisgekrönte Filme werden beim Aussortieren grundsätzlich nicht gezeigt
+    q = q.eq("oscars", "{}").eq("globes", "{}");
     if (skip.length) q = q.not("id", "in", `(${skip.slice(-300).join(",")})`);
     return q;
   };
@@ -620,6 +634,9 @@ export async function keepTitle(id: number, keep: boolean) {
 
 // Entfernen + sperren. Gibt zurück, was man für "Rückgängig" braucht.
 export async function removeForCuration(id: number) {
+  const { data } = await createAdminClient().from("titles").select("oscars,globes").eq("id", id).maybeSingle();
+  if (data && ((data.oscars as string[])?.length || (data.globes as string[])?.length))
+    throw new Error("Preisgekrönte Filme können derzeit nicht aussortiert werden.");
   await deleteTitles([id], true);
 }
 
@@ -642,5 +659,14 @@ export async function resetCuration(): Promise<void> {
   const user = await getUser();
   if (!isAdmin(user?.email)) return;
   await createAdminClient().from("titles").update({ kept_at: null }).not("kept_at", "is", null);
+  revalidatePath("/admin");
+}
+
+// Einzelnen Film von der Sperrliste nehmen (optional gleich wieder in den Katalog holen).
+export async function unblockTitle(mediaType: string, tmdbId: number, readd: boolean): Promise<void> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) return;
+  if (readd) await restoreTitle(mediaType, tmdbId);
+  else await createAdminClient().from("excluded_titles").delete().eq("media_type", mediaType).eq("tmdb_id", tmdbId);
   revalidatePath("/admin");
 }

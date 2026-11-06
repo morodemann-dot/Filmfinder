@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import AddPanel from "./AddPanel";
 import CatalogManager, { type ManageTitle } from "./CatalogManager";
 import Curate from "./Curate";
-import { clearBlocklist } from "@/app/actions";
+import { clearBlocklist, unblockTitle } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
 
@@ -28,6 +28,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   const genreRows = curate ? (await admin.from("titles").select("genres").limit(5000)).data ?? [] : [];
   const genres = [...new Set(genreRows.flatMap((r) => r.genres as string[]))].sort((a, b) => a.localeCompare(b, "de"));
+
+  const blockedList = manage
+    ? (await admin.from("excluded_titles").select("media_type,tmdb_id,title,excluded_at").order("excluded_at", { ascending: false }).limit(500)).data ?? []
+    : [];
 
   const titles = manage
     ? await fetchAll<ManageTitle>((from, to) =>
@@ -54,14 +58,30 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       ) : manage ? (
         <>
           <CatalogManager titles={titles} />
-          {(blocked.count ?? 0) > 0 && (
-            <form action={clearBlocklist} className="panel" style={{ marginTop: 24 }}>
-              <div className="eyebrow">Sperrliste</div>
+          {blockedList.length > 0 && (
+            <details className="panel" style={{ marginTop: 24 }}>
+              <summary className="eyebrow" style={{ cursor: "pointer" }}>Sperrliste · {blocked.count} aussortierte Titel</summary>
               <p className="caption">
-                {blocked.count} entfernte Titel werden bei Importen übersprungen. Leeren, wenn sie wieder erlaubt sein sollen.
+                Diese Titel werden bei allen Importen übersprungen – auch beim IMDb-Import.
+                Nur wenn du sie hier wieder aufnimmst oder in der Suche bewusst hinzufügst, kommen sie zurück.
               </p>
-              <button className="btn">Sperrliste leeren</button>
-            </form>
+              <div className="manage-list">
+                {blockedList.map((b) => (
+                  <div key={`${b.media_type}-${b.tmdb_id}`} className="manage-item" style={{ gridTemplateColumns: "1fr auto auto" }}>
+                    <div className="manage-title">{b.title ?? `TMDB ${b.tmdb_id}`}</div>
+                    <form action={unblockTitle.bind(null, b.media_type as string, b.tmdb_id as number, true)}>
+                      <button className="btn" style={{ minHeight: 32, fontSize: "0.8rem" }}>Wieder aufnehmen</button>
+                    </form>
+                    <form action={unblockTitle.bind(null, b.media_type as string, b.tmdb_id as number, false)}>
+                      <button className="btn ghost" style={{ minHeight: 32, fontSize: "0.8rem" }} title="Nur von der Sperrliste nehmen">Entsperren</button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+              <form action={clearBlocklist} style={{ marginTop: 14 }}>
+                <button className="btn ghost">Ganze Sperrliste leeren</button>
+              </form>
+            </details>
           )}
         </>
       ) : (
