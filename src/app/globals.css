@@ -59,7 +59,7 @@ code { font-size: 0.85em; background: var(--surface-2); padding: 1px 5px; border
 /* ---------- Untere Navigation (Tab Bar) ---------- */
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(4, 1fr);
   height: calc(var(--nav-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   background: rgba(22, 22, 23, 0.85);
@@ -336,3 +336,14 @@ details[open] summary::after { content: " ⌄"; }
 }
 .deck { overflow: visible; }
 html, body { overflow-x: clip; }
+
+/* Suchfeld (Apple-Stil) */
+.searchbox { position: relative; display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; }
+.searchbox svg { position: absolute; left: 11px; width: 17px; height: 17px; stroke: var(--muted); stroke-width: 2; fill: none; stroke-linecap: round; pointer-events: none; }
+.searchbox input {
+  flex: 1; height: 38px; border: 0; border-radius: 10px; background: var(--surface); padding: 0 12px 0 34px;
+  font-size: 16px; color: var(--text); -webkit-appearance: none; appearance: none;
+}
+.searchbox input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+.searchbox input::placeholder { color: var(--muted); }
+.searchbox-clear { color: var(--accent); font-size: 0.95rem; font-weight: 500; white-space: nowrap; }

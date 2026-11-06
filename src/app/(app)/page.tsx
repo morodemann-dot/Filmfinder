@@ -2,10 +2,12 @@ import Link from "next/link";
 import { Suspense } from "react";
 import TitleCard from "@/components/TitleCard";
 import FilterBar from "@/components/FilterBar";
+import SearchResults from "@/components/SearchResults";
 import { createClient } from "@/lib/supabase/server";
 import type { Title } from "@/lib/types";
 
-// Startseite "Entdecken": der ganze Katalog – ohne das, was du schon eingeordnet hast.
+// Startseite "Entdecken": Suchfeld oben. Ohne Suchbegriff der ganze Katalog
+// (ohne das, was du schon eingeordnet hast), mit Suchbegriff die Treffer.
 
 const SORTS = {
   beliebt: "Beliebt",
@@ -17,10 +19,30 @@ const SORTS = {
 const DECADES = [1980, 1990, 2000, 2010, 2020];
 const PER_PAGE = 120;
 
-type SP = { format?: string; genre?: string; sort?: string; jahrzehnt?: string; seite?: string };
+type SP = { q?: string; format?: string; genre?: string; sort?: string; jahrzehnt?: string; seite?: string };
 
 export default async function DiscoverPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
+  const query = (sp.q ?? "").trim();
+
+  const searchBox = (
+    <form action="/" className="searchbox" role="search">
+      <svg viewBox="0 0 24 24" aria-hidden><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
+      <input name="q" type="search" defaultValue={query} placeholder="Film oder Serie suchen …"
+        autoComplete="off" enterKeyHint="search" aria-label="Suchen" />
+      {query && <Link href="/" className="searchbox-clear" aria-label="Suche beenden">Abbrechen</Link>}
+    </form>
+  );
+
+  if (query) {
+    return (
+      <>
+        <h1>Entdecken</h1>
+        {searchBox}
+        <SearchResults query={query} />
+      </>
+    );
+  }
   const format = sp.format === "film" || sp.format === "serie" ? sp.format : null;
   const sort = sp.sort && sp.sort in SORTS ? sp.sort : "beliebt";
   const decade = DECADES.includes(Number(sp.jahrzehnt)) ? Number(sp.jahrzehnt) : null;
@@ -54,6 +76,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <h1>Entdecken</h1>
+      {searchBox}
       <Suspense>
         <FilterBar sorts={SORTS} defaultSort="beliebt" genres={genres} decades={DECADES} />
       </Suspense>
