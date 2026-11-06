@@ -7,8 +7,8 @@ import { cookies } from "next/headers";
 export async function createClient() {
   const cookieStore = await cookies();
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!.trim(),
     {
       cookies: {
         getAll() {
@@ -32,8 +32,8 @@ export async function createClient() {
 // Wird gebraucht, um Titel in den Katalog zu schreiben und Konten anzulegen.
 export function createAdminClient() {
   return createPlainClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+    process.env.SUPABASE_SECRET_KEY!.trim(),
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
 }

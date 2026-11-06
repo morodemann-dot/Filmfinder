@@ -35,7 +35,7 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
   const password = String(formData.get("password") ?? "");
   const code = String(formData.get("code") ?? "").trim();
 
-  if (!process.env.INVITE_CODE || code !== process.env.INVITE_CODE)
+  if (!process.env.INVITE_CODE || code !== process.env.INVITE_CODE.trim())
     return { error: "Der Einladungscode stimmt nicht." };
   if (password.length < 8) return { error: "Das Passwort braucht mindestens 8 Zeichen." };
 

@@ -7,7 +7,7 @@ export const IMG = "https://image.tmdb.org/t/p";
 export type MediaType = "movie" | "tv";
 
 async function tmdb<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-  const token = process.env.TMDB_READ_TOKEN;
+  const token = process.env.TMDB_READ_TOKEN?.trim();
   if (!token) throw new Error("TMDB_READ_TOKEN fehlt in den Einstellungen.");
   const url = new URL(BASE + path);
   url.searchParams.set("language", "de-DE");
