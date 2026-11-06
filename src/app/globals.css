@@ -373,3 +373,10 @@ html, body { overflow-x: clip; }
 .pill-btn { white-space: nowrap; padding: 0 15px; font-size: 0.88rem; flex: 1; max-width: 150px; }
 .pick-actions { padding: 0 2px; }
 .quick .quick-because { height: 1.3em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--accent); font-weight: 500; margin: -6px 0 4px; }
+.page-title-compact { font-size: 1.6rem; margin: 0.1em 0 0.2em; }
+.quick .progress { margin-bottom: 4px; }
+.quick > .row:first-of-type { margin-bottom: 4px !important; }
+.quick > .row:first-of-type .btn { min-height: 32px; }
+.linkish { background: none; border: 0; padding: 4px 6px; color: var(--muted); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.quick .poster, .quick .flash { width: min(200px, 22vh); }
+.quick .score-label { min-height: 26px; }

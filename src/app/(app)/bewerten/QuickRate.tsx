@@ -16,7 +16,7 @@ const ANSWER_TEXT: Record<Status, string> = {
   nicht_interessiert: "Kein Interesse",
 };
 
-export default function QuickRate({ titles: initial }: { titles: RateCandidate[] }) {
+export default function QuickRate({ titles: initial, alreadyDone = 0 }: { titles: RateCandidate[]; alreadyDone?: number }) {
   // Warteschlange: wird nach "gesehen" um verwandte Filme (gleiche Reihe/Regie) umsortiert.
   const [titles, setTitles] = useState(initial);
   const [because, setBecause] = useState<Record<number, string>>({}); // "Weil du X gesehen hast"
@@ -98,7 +98,7 @@ export default function QuickRate({ titles: initial }: { titles: RateCandidate[]
         <button className="btn ghost" onClick={back} disabled={index === 0 && !flash} style={{ paddingLeft: 0 }}>
           ‹ Zurück
         </button>
-        <span className="caption">{index + 1} / {titles.length}</span>
+        <span className="caption">{alreadyDone + Object.keys(answers).length} eingeordnet</span>
       </div>
 
       <div style={{ position: "relative" }}>
@@ -121,7 +121,9 @@ export default function QuickRate({ titles: initial }: { titles: RateCandidate[]
 
       <h2><span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span></h2>
       <div className="caption quick-because">
-        {because[t.id] && !current ? <>Weil du „{because[t.id]}“ gesehen hast</> : null}
+        {current && !flash
+          ? <span className="muted">Bereits beantwortet – neue Auswahl überschreibt</span>
+          : because[t.id] ? <>Weil du „{because[t.id]}“ gesehen hast</> : null}
       </div>
       <div className="caption quick-meta">
         {[t.format, t.release_year, t.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
@@ -131,7 +133,11 @@ export default function QuickRate({ titles: initial }: { titles: RateCandidate[]
         <Score
           value={shown?.status === "gesehen" ? shown.rating : null}
           onChange={(r) => answer("gesehen", r)}
-          hint="Gesehen? Tippe eine Zahl an."
+          hint={
+            <button type="button" className="linkish" onClick={() => answer("gesehen")}>
+              Gesehen, aber ohne Bewertung
+            </button>
+          }
         />
       </div>
 
@@ -140,12 +146,6 @@ export default function QuickRate({ titles: initial }: { titles: RateCandidate[]
         <button className={`btn ${shown?.status === "merkliste" ? "active" : ""}`} onClick={() => answer("merkliste")}>Merkliste</button>
         <button className={`btn ${shown?.status === "nicht_interessiert" ? "active" : ""}`} onClick={() => answer("nicht_interessiert")}>Kein Interesse</button>
       </div>
-      <div className="row" style={{ marginTop: 6 }}>
-        <button className="btn ghost" onClick={() => answer("gesehen")}>Gesehen, ohne Bewertung</button>
-      </div>
-      <p className="caption hint-line">
-        {current && !flash ? "Bereits beantwortet – eine neue Auswahl überschreibt die alte." : ""}
-      </p>
       {error && <p className="error">{error}</p>}
     </div>
   );

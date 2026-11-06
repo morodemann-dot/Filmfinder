@@ -31,7 +31,7 @@ export default function Score({
   value: number | null;
   onChange: (v: number) => void;
   disabled?: boolean;
-  hint?: string;
+  hint?: React.ReactNode;
 }) {
   return (
     <div className="score">
