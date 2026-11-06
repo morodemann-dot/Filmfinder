@@ -5,7 +5,8 @@ import { STATUS_LABEL, formatScore, type Status, type Title } from "@/lib/types"
 
 // Persönliche Bibliothek: alles, was du schon eingeordnet hast.
 
-const TABS: Status[] = ["gesehen", "merkliste", "nicht_interessiert", "nicht_gesehen"];
+// "Nicht gesehen" wird intern gespeichert (damit es beim Bewerten nicht wiederkommt), aber hier nicht angezeigt.
+const TABS: Status[] = ["gesehen", "merkliste", "nicht_interessiert"];
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const sp = await searchParams;
