@@ -347,3 +347,28 @@ html, body { overflow-x: clip; }
 .searchbox input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 .searchbox input::placeholder { color: var(--muted); }
 .searchbox-clear { color: var(--accent); font-size: 0.95rem; font-weight: 500; white-space: nowrap; }
+
+/* ---------- Filmfinder: Vorschlags-Stapel ---------- */
+.pick { max-width: 440px; margin: 0 auto; }
+.pick-deck { height: min(68vh, 600px); }
+.pick-deck .swipe-card { cursor: pointer; }
+.pick-deck .swipe-info { padding-bottom: 14px; }
+.pick-deck .reasons { margin-top: 6px; }
+.pick-deck .stamp { font-size: 1.25rem; }
+.pick-actions { gap: 10px; }
+.pill-btn {
+  height: 46px; padding: 0 18px; border-radius: 23px; border: 0; background: var(--surface);
+  font-size: 0.92rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+.pill-btn:active { transform: scale(0.95); }
+.pill-btn:disabled { opacity: 0.4; }
+.pick-actions .round { width: 52px; height: 52px; font-size: 1.4rem; }
+.pick-actions .round.undo { width: 42px; height: 42px; font-size: 1.1rem; }
+.rate-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; padding: 16px 14px 18px;
+  background: rgba(28, 28, 30, 0.97); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-top: 0.5px solid var(--line); text-align: center; animation: pop 0.18s ease-out; cursor: default;
+}
+.rate-sheet .score-row button { height: 40px; }
+.pill-btn { white-space: nowrap; padding: 0 15px; font-size: 0.88rem; flex: 1; max-width: 150px; }
+.pick-actions { padding: 0 2px; }

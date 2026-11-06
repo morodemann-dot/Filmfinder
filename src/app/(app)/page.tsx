@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Poster from "@/components/Poster";
+import PickDeck, { type Pick } from "@/components/PickDeck";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
 import { buildProfile, recommend, topPreferences, type RatedTitle, type Recommendation } from "@/lib/recommend";
@@ -19,23 +20,6 @@ function href(sp: SP, change: Partial<SP>) {
   for (const [k, v] of Object.entries({ ...sp, ...change })) if (v) p.set(k, v);
   const s = p.toString();
   return s ? `/?${s}` : "/";
-}
-
-function Hero({ r }: { r: Recommendation }) {
-  const t = r.title;
-  return (
-    <Link href={`/titel/${t.id}`} className="hero">
-      <div className="hero-poster"><Poster path={t.poster_path} title={t.title} size="w342" /></div>
-      <div className="hero-body">
-        <div className="eyebrow" style={{ color: "var(--accent)" }}>Unser Tipp</div>
-        <div className="hero-title">{t.title}</div>
-        <div className="caption">
-          {[t.release_year, formatRuntime(t.runtime_seconds), t.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
-        </div>
-        <ul className="reasons">{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>
-      </div>
-    </Link>
-  );
 }
 
 function Tile({ r }: { r: Recommendation }) {
@@ -94,8 +78,15 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
       (!surprise || (t.popularity ?? 0) < medianPop),
   );
   const recs = recommend(candidates, prefs).filter((r) => r.score > 0.1 && r.reasons.length > 0);
-  const [hero, ...rest] = recs;
-  const more = rest.slice(0, 12);
+  const DECK = 25; // so viele Vorschläge liegen im Stapel
+  const picks: Pick[] = recs.slice(0, DECK).map((r) => ({
+    id: r.title.id,
+    title: r.title.title,
+    poster_path: r.title.poster_path,
+    meta: [r.title.release_year, formatRuntime(r.title.runtime_seconds), r.title.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · "),
+    reasons: r.reasons,
+  }));
+  const more = recs.slice(DECK, DECK + 12);
   const learned = topPreferences(prefs, 8);
 
   return (
@@ -129,12 +120,12 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
       </div>
 
       <div style={{ marginTop: 18 }}>
-        {hero ? (
+        {picks.length > 0 ? (
           <>
-            <Hero r={hero} />
+            <PickDeck picks={picks} />
             {more.length > 0 && (
               <>
-                <h2 className="section">Ebenfalls passend</h2>
+                <h2 className="section">Weitere Ideen</h2>
                 <div className="grid">{more.map((r) => <Tile key={r.title.id} r={r} />)}</div>
               </>
             )}
