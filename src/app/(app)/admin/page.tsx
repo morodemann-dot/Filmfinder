@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import ImportForm from "./ImportForm";
+import { DirectorForm, HollywoodForm } from "./ImportForm";
+import { removeAllSeries } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 
 // Der Import darf bis zu 60 Sekunden dauern.
@@ -21,13 +22,24 @@ export default async function AdminPage() {
       <h1>Katalog füllen</h1>
       <p className="muted">
         Aktuell: <strong>{movies.count ?? 0}</strong> Filme und <strong>{shows.count ?? 0}</strong> Serien.
-      </p>
-      <p className="muted small">
-        Jede Seite einer Liste enthält 20 Titel. Pro Durchgang höchstens 5 Seiten (= 100 Titel), damit der
-        Server nicht zu lange braucht. Danach einfach mit der nächsten Startseite weitermachen.
         Doppelte Titel werden automatisch erkannt.
       </p>
-      <ImportForm />
+
+      <div style={{ display: "grid", gap: 16 }}>
+        <HollywoodForm />
+        <DirectorForm />
+
+        {(shows.count ?? 0) > 0 && (
+          <form action={removeAllSeries} className="panel">
+            <h2 style={{ marginTop: 0 }}>Serien entfernen</h2>
+            <p className="muted small" style={{ marginTop: 0 }}>
+              Entfernt alle {shows.count} Serien aus dem Katalog – inklusive aller Bewertungen dazu.
+              Das lässt sich nicht rückgängig machen.
+            </p>
+            <button className="btn">Alle Serien entfernen</button>
+          </form>
+        )}
+      </div>
     </>
   );
 }

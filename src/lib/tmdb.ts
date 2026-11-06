@@ -89,6 +89,9 @@ type Details = {
   poster_path?: string | null;
   popularity?: number;
   last_episode_to_air?: { runtime?: number | null } | null;
+  production_companies?: { id: number; name: string }[];
+  credits?: { crew?: { job: string; name: string }[] };
+  created_by?: { name: string }[];
 };
 
 const SERIES_STATUS: Record<string, string> = {
@@ -102,7 +105,7 @@ const SERIES_STATUS: Record<string, string> = {
 
 // Holt die Details zu einem Titel und übersetzt sie in unser Datenformat (M001–M010).
 export async function fetchTitleRow(type: MediaType, id: number) {
-  const d = await tmdb<Details>(`/${type}/${id}`);
+  const d = await tmdb<Details>(`/${type}/${id}`, { append_to_response: "credits" });
   const dateStr = type === "movie" ? d.release_date : d.first_air_date;
   const year = dateStr ? Number(dateStr.slice(0, 4)) : null;
 
@@ -134,6 +137,11 @@ export async function fetchTitleRow(type: MediaType, id: number) {
     overview: d.overview || null,
     poster_path: d.poster_path ?? null,
     popularity: d.popularity ?? null,
+    directors:
+      type === "movie"
+        ? [...new Set((d.credits?.crew ?? []).filter((c) => c.job === "Director").map((c) => c.name))]
+        : (d.created_by ?? []).map((c) => c.name),
+    studios: (d.production_companies ?? []).map((c) => c.name),
     metadata_source: "tmdb",
     fetched_at: new Date().toISOString(),
   };
@@ -147,4 +155,74 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Pr
     out.push(...(await Promise.allSettled(chunk.map(fn))));
   }
   return out;
+}
+
+// ---------------- Kuratierter Import ----------------
+
+// Netflix-Produktionen erkennen (anhand der Produktionsfirmen).
+export function isNetflix(studios: string[]) {
+  return studios.some((s) => /netflix/i.test(s));
+}
+
+// Große/bekannte Hollywood-Studios (Namensmuster, wie sie bei TMDB stehen).
+const MAJOR_STUDIO_PATTERNS = [
+  /warner bros/i, /universal pictures/i, /paramount/i, /columbia pictures/i, /sony pictures/i, /tristar/i,
+  /20th century/i, /twentieth century/i, /walt disney/i, /disney/i, /pixar/i, /lucasfilm/i, /marvel studios/i,
+  /dreamworks/i, /new line/i, /metro-goldwyn|mgm/i, /lionsgate|lions gate/i, /miramax/i, /a24/i,
+  /legendary/i, /focus features/i, /searchlight/i, /amblin/i, /orion pictures/i, /summit entertainment/i,
+  /touchstone/i, /village roadshow/i, /regency/i, /blumhouse/i, /castle rock/i, /carolco/i,
+  /united artists/i, /annapurna/i, /plan b/i, /skydance/i, /working title/i, /imagine entertainment/i,
+];
+export function hasMajorStudio(studios: string[]) {
+  return studios.some((s) => MAJOR_STUDIO_PATTERNS.some((re) => re.test(s)));
+}
+
+export const DECADES = {
+  "1980": { label: "1980er", from: "1980-01-01", to: "1989-12-31" },
+  "1990": { label: "1990er", from: "1990-01-01", to: "1999-12-31" },
+  "2000": { label: "2000er", from: "2000-01-01", to: "2009-12-31" },
+  "2010": { label: "2010er", from: "2010-01-01", to: "2019-12-31" },
+  "2020": { label: "2020 bis heute", from: "2020-01-01", to: "2099-12-31" },
+} as const;
+export type DecadeKey = keyof typeof DECADES;
+
+type DiscoverResult = { results: { id: number }[]; total_pages: number; total_results: number };
+
+// US-Filme eines Jahrzehnts, sortiert nach Anzahl der Bewertungen (= Bekanntheit).
+export async function discoverHollywood(decade: DecadeKey, minVotes: number, page: number) {
+  const d = DECADES[decade];
+  const data = await tmdb<DiscoverResult>("/discover/movie", {
+    with_origin_country: "US",
+    with_original_language: "en",
+    "primary_release_date.gte": d.from,
+    "primary_release_date.lte": d.to,
+    "vote_count.gte": String(minVotes),
+    sort_by: "vote_count.desc",
+    include_adult: "false",
+    page: String(page),
+  });
+  return { ids: data.results.map((r) => r.id), totalPages: data.total_pages, total: data.total_results };
+}
+
+type PersonSearch = { results: { id: number; name: string; known_for_department?: string }[] };
+type MovieCredits = {
+  crew: { id: number; job: string; release_date?: string; vote_count?: number }[];
+};
+
+// Sucht eine Regie-Person und liefert ihre Filme ab 1980.
+export async function directorMovies(name: string, minVotes: number) {
+  const s = await tmdb<PersonSearch>("/search/person", { query: name, include_adult: "false" });
+  const person = s.results.find((p) => p.known_for_department === "Directing") ?? s.results[0];
+  if (!person) return null;
+  const c = await tmdb<MovieCredits>(`/person/${person.id}/movie_credits`);
+  const ids = [
+    ...new Set(
+      c.crew
+        .filter((m) => m.job === "Director")
+        .filter((m) => (m.release_date ?? "") >= "1980-01-01")
+        .filter((m) => (m.vote_count ?? 0) >= minVotes)
+        .map((m) => m.id),
+    ),
+  ];
+  return { person: person.name, ids };
 }

@@ -16,6 +16,8 @@ export type Title = {
   overview: string | null;
   poster_path: string | null;
   popularity: number | null;
+  directors: string[] | null;
+  studios: string[] | null;
 };
 
 export type Status = "merkliste" | "gesehen" | "nicht_gesehen" | "nicht_interessiert";

@@ -27,6 +27,8 @@ create table if not exists public.titles (
   overview          text,                                -- Kurzbeschreibung (nur Anzeige)
   poster_path       text,                                -- Plakat (Bild liegt bei TMDB)
   popularity        real,
+  directors         text[] not null default '{}',   -- Regie (bei Serien: Schöpfer)
+  studios           text[] not null default '{}',   -- Produktionsfirmen
   metadata_source   text not null default 'tmdb',
   fetched_at        timestamptz not null default now(),  -- TMDB: max. 6 Monate speichern, dann auffrischen
   created_at        timestamptz not null default now(),

@@ -56,6 +56,18 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
             ))}
           </div>
         )}
+        {title.directors && title.directors.length > 0 && (
+          <div className="small" style={{ marginBottom: 4 }}>
+            <span className="muted">{title.media_type === "tv" ? "Erdacht von" : "Regie"}: </span>
+            {title.directors.join(", ")}
+          </div>
+        )}
+        {title.studios && title.studios.length > 0 && (
+          <div className="small" style={{ marginBottom: 10 }}>
+            <span className="muted">Studios: </span>
+            {title.studios.slice(0, 4).join(", ")}
+          </div>
+        )}
         {title.overview && <p style={{ lineHeight: 1.55 }}>{title.overview}</p>}
 
         <FeedbackControls
