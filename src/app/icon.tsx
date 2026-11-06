@@ -1,21 +1,9 @@
-import { ImageResponse } from "next/og";
+import { renderAppIcon } from "@/lib/appIcon";
 
-// App-Symbol, automatisch erzeugt: ein "F" auf dunklem Grund.
+// App-Symbol (z. B. für Android und Browser-Tabs)
 export const size = { width: 512, height: 512 };
 export const contentType = "image/png";
 
 export default function Icon() {
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-          background: "#0f0d0c", color: "#f0a63a", fontSize: 340, fontWeight: 700, fontFamily: "Georgia, serif",
-        }}
-      >
-        F
-      </div>
-    ),
-    size,
-  );
+  return renderAppIcon(512);
 }

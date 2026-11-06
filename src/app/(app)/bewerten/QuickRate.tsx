@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Poster from "@/components/Poster";
 import Score, { SCORE_LABEL, scoreColor } from "@/components/Score";
 import { setFeedback } from "@/app/actions";
-import type { Status, Title } from "@/lib/types";
+import type { Status } from "@/lib/types";
+import { pullRelated, type RateCandidate } from "@/lib/likelySeen";
 
 type Answer = { status: Status; rating: number | null };
 
@@ -15,9 +16,10 @@ const ANSWER_TEXT: Record<Status, string> = {
   nicht_interessiert: "Kein Interesse",
 };
 
-export default function QuickRate({ titles: initial }: { titles: Title[] }) {
-  // Die Liste wird beim Öffnen einmal "eingefroren", damit sie sich beim Speichern nicht verschiebt.
-  const [titles] = useState(initial);
+export default function QuickRate({ titles: initial }: { titles: RateCandidate[] }) {
+  // Warteschlange: wird nach "gesehen" um verwandte Filme (gleiche Reihe/Regie) umsortiert.
+  const [titles, setTitles] = useState(initial);
+  const [because, setBecause] = useState<Record<number, string>>({}); // "Weil du X gesehen hast"
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
   const [flash, setFlash] = useState<Answer | null>(null); // kurze Bestätigung
@@ -51,6 +53,18 @@ export default function QuickRate({ titles: initial }: { titles: Title[] }) {
     setError(null);
     const a = { status, rating };
     setAnswers((prev) => ({ ...prev, [t.id]: a }));
+    // Gesehen → verwandte Filme direkt als Nächstes zeigen (nur beim ersten Beantworten)
+    if (status === "gesehen" && !answers[t.id]) {
+      const r = pullRelated(titles, index + 1, t);
+      if (r.relatedIds.length) {
+        setTitles(r.queue);
+        setBecause((prev) => {
+          const next = { ...prev };
+          for (const id of r.relatedIds) if (!next[id]) next[id] = t.title;
+          return next;
+        });
+      }
+    }
     setFlash(a);
     start(async () => {
       try {
@@ -106,6 +120,9 @@ export default function QuickRate({ titles: initial }: { titles: Title[] }) {
       </div>
 
       <h2><span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span></h2>
+      <div className="caption quick-because">
+        {because[t.id] && !current ? <>Weil du „{because[t.id]}“ gesehen hast</> : null}
+      </div>
       <div className="caption quick-meta">
         {[t.format, t.release_year, t.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
       </div>
