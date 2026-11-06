@@ -1,9 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 
-const display = Fraunces({ subsets: ["latin"], variable: "--font-display", weight: ["600", "700"] });
-const body = Inter({ subsets: ["latin"], variable: "--font-body" });
+// Schrift: Helvetica Neue (ist auf iPhone und Mac bereits installiert).
 
 export const metadata: Metadata = {
   title: "Filmfinder",
@@ -12,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f0d0c",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -20,7 +18,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={`${display.variable} ${body.variable}`}>
+    <html lang="de">
       <body>{children}</body>
     </html>
   );

@@ -13,13 +13,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link href="/" className="brand">
             Film<span>finder</span>
           </Link>
-          <div className="row small">
+          <div className="links">
             {isAdmin(user?.email) && (
-              <Link href="/admin" className="muted">Katalog</Link>
+              <Link href="/admin">Katalog</Link>
             )}
-            <Link href="/ueber" className="muted">Über</Link>
+            <Link href="/ueber">Über</Link>
             <form action={logout}>
-              <button className="btn ghost small" style={{ minHeight: 36 }}>Abmelden</button>
+              <button className="btn ghost" style={{ minHeight: 30, padding: 0, fontSize: "0.85rem" }}>Abmelden</button>
             </form>
           </div>
         </header>

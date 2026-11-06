@@ -1,0 +1,156 @@
+// "Für dich" – Version 1 der Empfehlungen.
+//
+// Idee (einfach erklärt):
+// 1. Wir schauen, wie du Filme im Vergleich zu deinem eigenen Durchschnitt bewertest.
+//    Gibst du Nolan-Filmen 1 Stern mehr als sonst, ist "Regie: Nolan" ein Plus.
+// 2. Wenige Belege zählen wenig (1 Film ist Zufall, 5 Filme sind ein Muster).
+// 3. Jeder noch nicht gesehene Film bekommt Punkte für seine Merkmale.
+// 4. Die stärksten Gründe werden als Erklärung angezeigt – nur aus echten Daten.
+//
+// Stufe 2 ergänzt später die tiefen Merkmale (Stimmung, Komplexität, Humor …).
+
+import type { Title } from "./types";
+
+export type RatedTitle = Title & { rating: number | null; status: string };
+
+type FeatureKind = "genre" | "regie" | "besetzung" | "reihe" | "jahrzehnt" | "preise";
+
+// Wie stark eine Merkmalsart zählt (vorläufig, wie in der Spezifikation vorgesehen)
+const KIND_WEIGHT: Record<FeatureKind, number> = {
+  regie: 1.0,
+  reihe: 1.0,
+  genre: 0.8,
+  besetzung: 0.6,
+  preise: 0.5,
+  jahrzehnt: 0.4,
+};
+const SHRINK = 2; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
+
+type Feature = { key: string; kind: FeatureKind; label: string };
+
+function featuresOf(t: Title): Feature[] {
+  const f: Feature[] = [];
+  for (const g of t.genres ?? []) f.push({ key: `genre:${g}`, kind: "genre", label: g });
+  for (const d of t.directors ?? []) f.push({ key: `regie:${d}`, kind: "regie", label: d });
+  for (const a of (t.cast_names ?? []).slice(0, 5)) f.push({ key: `besetzung:${a}`, kind: "besetzung", label: a });
+  if (t.collection_id && t.collection_name)
+    f.push({ key: `reihe:${t.collection_id}`, kind: "reihe", label: t.collection_name });
+  if (t.release_year) {
+    const dec = Math.floor(t.release_year / 10) * 10;
+    f.push({ key: `jahrzehnt:${dec}`, kind: "jahrzehnt", label: `${String(dec).slice(2)}er-Jahre` });
+  }
+  if ((t.oscars?.length ?? 0) + (t.globes?.length ?? 0) > 0)
+    f.push({ key: "preise:ja", kind: "preise", label: "Preisgekrönte Filme" });
+  return f;
+}
+
+export type Preference = {
+  key: string;
+  kind: FeatureKind;
+  label: string;
+  pref: number; // in Sternen über/unter deinem Schnitt (vorsichtig geschätzt)
+  n: number; // Anzahl bewerteter Filme mit diesem Merkmal
+  avgStars: number | null; // dein Durchschnitt bei diesen Filmen
+};
+
+export type Recommendation = {
+  title: Title;
+  score: number;
+  reasons: string[];
+  coverage: number; // wie viele Merkmale des Films wir schon einschätzen können (0–1)
+};
+
+export function buildProfile(rated: RatedTitle[]) {
+  const withRating = rated.filter((r) => r.status === "gesehen" && r.rating);
+  const mean = withRating.reduce((s, r) => s + r.rating!, 0) / Math.max(1, withRating.length);
+
+  // Beobachtungen sammeln
+  const acc = new Map<string, { f: Feature; sumW: number; sumWD: number; n: number; sumR: number }>();
+  const add = (t: Title, dev: number, w: number, rating: number | null) => {
+    for (const f of featuresOf(t)) {
+      const a = acc.get(f.key) ?? { f, sumW: 0, sumWD: 0, n: 0, sumR: 0 };
+      a.sumW += w;
+      a.sumWD += w * dev;
+      if (rating) { a.n += 1; a.sumR += rating; }
+      acc.set(f.key, a);
+    }
+  };
+  for (const r of rated) {
+    if (r.status === "gesehen" && r.rating) add(r, r.rating - mean, 1, r.rating);
+    else if (r.status === "nicht_interessiert") add(r, -2, 0.5, null); // schwaches Minus
+    else if (r.status === "merkliste") add(r, 1, 0.3, null); // sehr schwaches Plus
+  }
+
+  const prefs = new Map<string, Preference>();
+  for (const [key, a] of acc) {
+    prefs.set(key, {
+      key,
+      kind: a.f.kind,
+      label: a.f.label,
+      pref: a.sumWD / (a.sumW + SHRINK) / 2, // /2: von 1–10 in Sterne umrechnen
+      n: a.n,
+      avgStars: a.n ? a.sumR / a.n / 2 : null,
+    });
+  }
+  return { prefs, ratedCount: withRating.length, meanStars: mean / 2 };
+}
+
+const KIND_LABEL: Record<FeatureKind, string> = {
+  regie: "Regie",
+  besetzung: "Mit",
+  genre: "Genre",
+  reihe: "Reihe",
+  jahrzehnt: "Zeit",
+  preise: "",
+};
+
+function reasonText(p: Preference) {
+  const stars = p.avgStars ? `Ø ${p.avgStars.toLocaleString("de-DE", { maximumFractionDigits: 1 })}★` : "";
+  const evidence = p.n ? `${p.n} ${p.n === 1 ? "Film" : "Filme"} bewertet${stars ? `, ${stars}` : ""}` : "aus deiner Merkliste";
+  const head = KIND_LABEL[p.kind] ? `${KIND_LABEL[p.kind]}: ${p.label}` : p.label;
+  return `${head} (${evidence})`;
+}
+
+export function recommend(candidates: Title[], prefs: Map<string, Preference>): Recommendation[] {
+  const out: Recommendation[] = [];
+  for (const t of candidates) {
+    const feats = featuresOf(t);
+    if (!feats.length) continue;
+
+    // Pro Merkmalsart den Durchschnitt nehmen (damit 5 Schauspieler nicht 5-fach zählen)
+    const byKind = new Map<FeatureKind, Preference[]>();
+    let known = 0;
+    for (const f of feats) {
+      const p = prefs.get(f.key);
+      if (!p) continue; // unbekannt = zählt nicht (nicht neutral, nicht negativ)
+      known++;
+      byKind.set(f.kind, [...(byKind.get(f.kind) ?? []), p]);
+    }
+    let score = 0;
+    const contrib: { p: Preference; c: number }[] = [];
+    for (const [kind, ps] of byKind) {
+      const avg = ps.reduce((s, p) => s + p.pref, 0) / ps.length;
+      score += KIND_WEIGHT[kind] * avg;
+      for (const p of ps) contrib.push({ p, c: (KIND_WEIGHT[kind] * p.pref) / ps.length });
+    }
+    // Ganz leichter Bonus für bekannte Filme, nur als Gleichstand-Entscheider
+    score += Math.log10(1 + (t.popularity ?? 0)) * 0.02;
+
+    const reasons = contrib
+      .filter((x) => x.c > 0.03 && x.p.kind !== "jahrzehnt")
+      .sort((a, b) => b.c - a.c)
+      .slice(0, 3)
+      .map((x) => reasonText(x.p));
+    out.push({ title: t, score, reasons, coverage: known / feats.length });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+// Was die App bisher über dich gelernt hat (für die Anzeige oben)
+export function topPreferences(prefs: Map<string, Preference>, count = 6) {
+  return [...prefs.values()]
+    .filter((p) => p.n >= 2 && p.kind !== "jahrzehnt" && p.kind !== "preise")
+    .sort((a, b) => b.pref - a.pref)
+    .slice(0, count)
+    .filter((p) => p.pref > 0.05);
+}

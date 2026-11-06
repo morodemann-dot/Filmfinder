@@ -1,28 +1,28 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import TitleCard from "@/components/TitleCard";
+import FilterBar from "@/components/FilterBar";
 import { createClient } from "@/lib/supabase/server";
 import type { Title } from "@/lib/types";
 
-// Startseite "Entdecken": Titel, die du noch nicht eingeordnet hast.
-// (In Stufe 3 kommt hier die persönliche Rangliste dazu.)
+// Startseite "Entdecken": der ganze Katalog – ohne das, was du schon eingeordnet hast.
 
-const FORMATS = { alle: "Alle", film: "Filme", serie: "Serien" } as const;
 const SORTS = {
   beliebt: "Beliebt",
   neu: "Neu im Katalog",
-  preise: "🏆 Preisgekrönt",
+  preise: "Preisgekrönt",
   jahr_neu: "Neueste zuerst",
   jahr_alt: "Älteste zuerst",
-} as const;
+};
 const DECADES = [1980, 1990, 2000, 2010, 2020];
-const PER_PAGE = 60;
+const PER_PAGE = 120;
 
 type SP = { format?: string; genre?: string; sort?: string; jahrzehnt?: string; seite?: string };
 
 export default async function DiscoverPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
-  const format = (sp.format && sp.format in FORMATS ? sp.format : "alle") as keyof typeof FORMATS;
-  const sort = (sp.sort && sp.sort in SORTS ? sp.sort : "beliebt") as keyof typeof SORTS;
+  const format = sp.format === "film" || sp.format === "serie" ? sp.format : null;
+  const sort = sp.sort && sp.sort in SORTS ? sp.sort : "beliebt";
   const decade = DECADES.includes(Number(sp.jahrzehnt)) ? Number(sp.jahrzehnt) : null;
   const genre = sp.genre ?? null;
   const page = Math.max(1, Number(sp.seite) || 1);
@@ -39,23 +39,14 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
     }),
     supabase.from("titles").select("genres").limit(5000),
   ]);
-  const genres = [...new Set((genreRows ?? []).flatMap((r) => r.genres as string[]))].sort((a, b) =>
-    a.localeCompare(b, "de"),
-  );
+  const genres = [...new Set((genreRows ?? []).flatMap((r) => r.genres as string[]))].sort((a, b) => a.localeCompare(b, "de"));
   const list = ((titles ?? []) as Title[]).slice(0, PER_PAGE);
   const hasMore = (titles?.length ?? 0) > PER_PAGE;
 
-  // Baut einen Link mit geänderten Filtern (und springt zurück auf Seite 1)
-  const link = (change: Partial<Record<keyof SP, string | null>>, keepPage = false) => {
-    const cur: Record<string, string | null> = {
-      format: format === "alle" ? null : format,
-      sort: sort === "beliebt" ? null : sort,
-      jahrzehnt: decade ? String(decade) : null,
-      genre,
-      seite: keepPage ? String(page) : null,
-    };
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries({ ...cur, ...change })) if (v) p.set(k, v);
+  const pageLink = (n: number) => {
+    const p = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]);
+    if (n > 1) p.set("seite", String(n));
+    else p.delete("seite");
     const s = p.toString();
     return s ? `/?${s}` : "/";
   };
@@ -63,39 +54,9 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <h1>Entdecken</h1>
-      <p className="muted small" style={{ marginTop: 0 }}>
-        Titel, die du noch nicht eingeordnet hast. Je mehr du bewertest, desto besser lernt die App deinen Geschmack.
-      </p>
-
-      <div className="chips">
-        {Object.entries(SORTS).map(([k, label]) => (
-          <Link key={k} href={link({ sort: k === "beliebt" ? null : k })} className="chip" aria-current={sort === k}>
-            {label}
-          </Link>
-        ))}
-      </div>
-      <div className="chips">
-        {Object.entries(FORMATS).map(([k, label]) => (
-          <Link key={k} href={link({ format: k === "alle" ? null : k })} className="chip" aria-current={format === k}>
-            {label}
-          </Link>
-        ))}
-        <span style={{ width: 8, flex: "none" }} />
-        <Link href={link({ jahrzehnt: null })} className="chip" aria-current={!decade}>Alle Jahre</Link>
-        {DECADES.map((d) => (
-          <Link key={d} href={link({ jahrzehnt: String(d) })} className="chip" aria-current={decade === d}>
-            {d === 2020 ? "ab 2020" : `${String(d).slice(2)}er`}
-          </Link>
-        ))}
-      </div>
-      {genres.length > 0 && (
-        <div className="chips">
-          <Link href={link({ genre: null })} className="chip" aria-current={!genre}>Alle Genres</Link>
-          {genres.map((g) => (
-            <Link key={g} href={link({ genre: g })} className="chip" aria-current={genre === g}>{g}</Link>
-          ))}
-        </div>
-      )}
+      <Suspense>
+        <FilterBar sorts={SORTS} defaultSort="beliebt" genres={genres} decades={DECADES} />
+      </Suspense>
 
       {error ? (
         <div className="empty error">
@@ -110,9 +71,9 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
               <TitleCard key={t.id} t={t} badge={(t.oscars?.length ?? 0) > 0 ? `🏆 ${t.oscars!.length}` : null} />
             ))}
           </div>
-          <div className="row" style={{ justifyContent: "center", marginTop: 22 }}>
-            {page > 1 && <Link className="btn" href={link({ seite: String(page - 1) })}>← Zurück</Link>}
-            {hasMore && <Link className="btn primary" href={link({ seite: String(page + 1) })}>Mehr anzeigen →</Link>}
+          <div className="pager">
+            {page > 1 && <Link className="btn" href={pageLink(page - 1)}>Zurück</Link>}
+            {hasMore && <Link className="btn primary" href={pageLink(page + 1)}>Mehr anzeigen</Link>}
           </div>
         </>
       ) : (
