@@ -12,6 +12,7 @@ import {
   collectionParts,
   keywordMovies,
   searchCollections,
+  tmdbIdFromImdb,
   directorMovies,
   discoverHollywood,
   fetchListIds,
@@ -391,4 +392,76 @@ export async function refreshOldMovies(): Promise<FormState> {
     message: `${rows.length} Filme aufgefrischt${netflixIds.length ? `, ${netflixIds.length} Netflix-Filme entfernt` : ""}.` +
       (data.length === 60 ? " Es gibt noch mehr – einfach nochmal klicken." : ""),
   };
+}
+
+// ---------------- IMDb-Import ----------------
+
+export type ImdbItem = { imdbId: string; rating: number | null };
+export type ImdbChunkResult = { added: number; rated: number; kept: number; notFound: string[] };
+
+// Verarbeitet einen Teil (max. 40 Einträge) einer IMDb-Bewertungsdatei:
+// Film in den Katalog holen (falls nötig) und deine Bewertung übernehmen.
+export async function importImdbChunk(items: ImdbItem[]): Promise<ImdbChunkResult> {
+  const user = await getUser();
+  if (!user) throw new Error("Nicht angemeldet");
+  const list = items
+    .filter((i) => /^tt\d+$/.test(i.imdbId))
+    .slice(0, 40);
+  const admin = createAdminClient();
+  const supabase = await createClient();
+
+  // 1) Welche Filme kennen wir schon (über die IMDb-ID)?
+  const { data: known, error } = await admin
+    .from("titles").select("id,imdb_id").in("imdb_id", list.map((i) => i.imdbId));
+  if (error) throw new Error(error.message + " (wurde die Ergänzung 4 im SQL Editor ausgeführt?)");
+  const idByImdb = new Map((known ?? []).map((r) => [r.imdb_id as string, r.id as number]));
+
+  // 2) Unbekannte Filme bei TMDB nachschlagen und in den Katalog schreiben
+  const unknown = list.filter((i) => !idByImdb.has(i.imdbId));
+  const notFound: string[] = [];
+  let added = 0;
+  const looked = await mapLimit(unknown, 8, async (i) => {
+    const tmdbId = await tmdbIdFromImdb(i.imdbId);
+    if (!tmdbId) return null;
+    const row = await fetchTitleRow("movie", tmdbId);
+    return { ...row, imdb_id: i.imdbId };
+  });
+  const rows: (Awaited<ReturnType<typeof fetchTitleRow>> & { imdb_id: string })[] = [];
+  for (let k = 0; k < looked.length; k++) {
+    const r = looked[k];
+    if (r.status === "fulfilled" && r.value) rows.push(r.value);
+    else notFound.push(unknown[k].imdbId);
+  }
+  if (rows.length) {
+    const { data: saved, error: e2 } = await admin
+      .from("titles").upsert(rows, { onConflict: "media_type,tmdb_id" }).select("id,imdb_id");
+    if (e2) throw new Error(e2.message);
+    for (const s of saved ?? []) idByImdb.set(s.imdb_id as string, s.id as number);
+    added = rows.length;
+  }
+
+  // 3) Bewertungen übernehmen – vorhandene Sterne-Bewertungen in der App bleiben unangetastet
+  const titleIds = list.map((i) => idByImdb.get(i.imdbId)).filter((x): x is number => !!x);
+  const { data: existing } = await supabase
+    .from("user_title_feedback").select("title_id,rating").eq("user_id", user.id).in("title_id", titleIds);
+  const hasRating = new Set((existing ?? []).filter((e) => e.rating != null).map((e) => e.title_id as number));
+
+  const now = new Date().toISOString();
+  const feedback = list.flatMap((i) => {
+    const tid = idByImdb.get(i.imdbId);
+    if (!tid || hasRating.has(tid)) return [];
+    const rating = i.rating && i.rating >= 1 && i.rating <= 10 ? Math.round(i.rating) : null;
+    return [{ user_id: user.id, title_id: tid, status: "gesehen", rating, reason: "IMDb-Import", updated_at: now }];
+  });
+  if (feedback.length) {
+    const { error: e3 } = await supabase.from("user_title_feedback").upsert(feedback);
+    if (e3) throw new Error(e3.message);
+  }
+
+  return { added, rated: feedback.length, kept: hasRating.size, notFound };
+}
+
+export async function finishImdbImport() {
+  revalidatePath("/");
+  revalidatePath("/bibliothek");
 }

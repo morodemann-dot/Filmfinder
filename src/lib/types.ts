@@ -20,6 +20,7 @@ export type Title = {
   studios: string[] | null;
   collection_id: number | null;
   collection_name: string | null;
+  imdb_id?: string | null;
 };
 
 export type Status = "merkliste" | "gesehen" | "nicht_gesehen" | "nicht_interessiert";

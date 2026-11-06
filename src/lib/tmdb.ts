@@ -93,6 +93,7 @@ type Details = {
   credits?: { crew?: { job: string; name: string }[] };
   created_by?: { name: string }[];
   belongs_to_collection?: { id: number; name: string } | null;
+  imdb_id?: string | null;
 };
 
 const SERIES_STATUS: Record<string, string> = {
@@ -145,6 +146,7 @@ export async function fetchTitleRow(type: MediaType, id: number) {
     studios: (d.production_companies ?? []).map((c) => c.name),
     collection_id: type === "movie" ? (d.belongs_to_collection?.id ?? null) : null,
     collection_name: type === "movie" ? (d.belongs_to_collection?.name ?? null) : null,
+    imdb_id: type === "movie" ? (d.imdb_id ?? null) : null,
     metadata_source: "tmdb",
     fetched_at: new Date().toISOString(),
   };
@@ -279,4 +281,10 @@ export async function keywordMovies(query: string, minVotes: number) {
     if (page >= d.total_pages) break;
   }
   return { keyword: kw.name, ids };
+}
+
+// IMDb-ID (z. B. tt0111161) in eine TMDB-Film-ID übersetzen.
+export async function tmdbIdFromImdb(imdbId: string) {
+  const r = await tmdb<{ movie_results: { id: number }[] }>(`/find/${imdbId}`, { external_source: "imdb_id" });
+  return r.movie_results[0]?.id ?? null;
 }

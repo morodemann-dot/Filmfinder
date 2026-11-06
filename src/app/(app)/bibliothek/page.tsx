@@ -26,7 +26,10 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <h1>Bibliothek</h1>
+      <div className="topbar" style={{ marginBottom: 6 }}>
+        <h1 style={{ margin: 0 }}>Bibliothek</h1>
+        <Link href="/imdb" className="btn small">IMDb importieren</Link>
+      </div>
       <div className="chips">
         {TABS.map((s) => (
           <Link key={s} href={`/bibliothek?tab=${s}`} className="chip" aria-current={tab === s}>

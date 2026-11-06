@@ -31,6 +31,7 @@ create table if not exists public.titles (
   studios           text[] not null default '{}',   -- Produktionsfirmen
   collection_id     integer,                          -- Filmreihe (TMDB)
   collection_name   text,
+  imdb_id           text,                             -- z. B. tt0111161
   metadata_source   text not null default 'tmdb',
   fetched_at        timestamptz not null default now(),  -- TMDB: max. 6 Monate speichern, dann auffrischen
   created_at        timestamptz not null default now(),
@@ -103,3 +104,5 @@ create table if not exists public.collections (
 );
 alter table public.collections enable row level security;
 create index if not exists titles_collection_idx on public.titles (collection_id);
+
+create index if not exists titles_imdb_idx on public.titles (imdb_id);
