@@ -18,6 +18,8 @@ export type Title = {
   popularity: number | null;
   directors: string[] | null;
   studios: string[] | null;
+  collection_id: number | null;
+  collection_name: string | null;
 };
 
 export type Status = "merkliste" | "gesehen" | "nicht_gesehen" | "nicht_interessiert";

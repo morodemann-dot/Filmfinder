@@ -92,6 +92,7 @@ type Details = {
   production_companies?: { id: number; name: string }[];
   credits?: { crew?: { job: string; name: string }[] };
   created_by?: { name: string }[];
+  belongs_to_collection?: { id: number; name: string } | null;
 };
 
 const SERIES_STATUS: Record<string, string> = {
@@ -142,6 +143,8 @@ export async function fetchTitleRow(type: MediaType, id: number) {
         ? [...new Set((d.credits?.crew ?? []).filter((c) => c.job === "Director").map((c) => c.name))]
         : (d.created_by ?? []).map((c) => c.name),
     studios: (d.production_companies ?? []).map((c) => c.name),
+    collection_id: type === "movie" ? (d.belongs_to_collection?.id ?? null) : null,
+    collection_name: type === "movie" ? (d.belongs_to_collection?.name ?? null) : null,
     metadata_source: "tmdb",
     fetched_at: new Date().toISOString(),
   };
@@ -225,4 +228,55 @@ export async function directorMovies(name: string, minVotes: number) {
     ),
   ];
   return { person: person.name, ids };
+}
+
+// ---------------- Filmreihen & Franchises ----------------
+
+type Part = { id: number; release_date?: string; vote_count?: number };
+type Collection = { id: number; name: string; parts: Part[] };
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+// Nur bereits erschienene, halbwegs bekannte Teile (keine Kurzfilme/Ankündigungen).
+function usableParts(parts: Part[], minVotes = 50) {
+  return parts
+    .filter((p) => p.release_date && p.release_date <= today())
+    .filter((p) => (p.vote_count ?? 0) >= minVotes)
+    .map((p) => p.id);
+}
+
+// Alle Teile einer Filmreihe.
+export async function collectionParts(id: number) {
+  const c = await tmdb<Collection>(`/collection/${id}`);
+  return { name: c.name, ids: usableParts(c.parts ?? []) };
+}
+
+// Sucht Filmreihen, deren Name den Suchbegriff enthält (z. B. "Spider-Man" -> 4 Reihen).
+export async function searchCollections(query: string) {
+  const r = await tmdb<{ results: { id: number; name: string }[] }>("/search/collection", { query });
+  const q = query.toLowerCase();
+  const matching = r.results.filter((c) => c.name.toLowerCase().includes(q));
+  return (matching.length ? matching : r.results.slice(0, 3)).slice(0, 10);
+}
+
+// Stichwort-Suche (für Universen wie "Marvel Cinematic Universe").
+export async function keywordMovies(query: string, minVotes: number) {
+  const r = await tmdb<{ results: { id: number; name: string }[] }>("/search/keyword", { query });
+  const q = query.toLowerCase();
+  const kw = r.results.find((k) => k.name.toLowerCase() === q) ?? r.results.find((k) => k.name.toLowerCase().includes(q));
+  if (!kw) return null;
+  const ids: number[] = [];
+  for (let page = 1; page <= 4; page++) {
+    const d = await tmdb<DiscoverResult>("/discover/movie", {
+      with_keywords: String(kw.id),
+      "vote_count.gte": String(minVotes),
+      "primary_release_date.lte": today(),
+      sort_by: "vote_count.desc",
+      include_adult: "false",
+      page: String(page),
+    });
+    ids.push(...d.results.map((x) => x.id));
+    if (page >= d.total_pages) break;
+  }
+  return { keyword: kw.name, ids };
 }

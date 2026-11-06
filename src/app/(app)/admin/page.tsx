@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { DirectorForm, HollywoodForm } from "./ImportForm";
+import { DirectorForm, FranchiseForm, HollywoodForm, MaintenanceForms } from "./ImportForm";
 import { removeAllSeries } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 
@@ -27,7 +27,9 @@ export default async function AdminPage() {
 
       <div style={{ display: "grid", gap: 16 }}>
         <HollywoodForm />
+        <FranchiseForm />
         <DirectorForm />
+        <MaintenanceForms />
 
         {(shows.count ?? 0) > 0 && (
           <form action={removeAllSeries} className="panel">

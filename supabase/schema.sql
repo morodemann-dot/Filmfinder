@@ -29,6 +29,8 @@ create table if not exists public.titles (
   popularity        real,
   directors         text[] not null default '{}',   -- Regie (bei Serien: Schöpfer)
   studios           text[] not null default '{}',   -- Produktionsfirmen
+  collection_id     integer,                          -- Filmreihe (TMDB)
+  collection_name   text,
   metadata_source   text not null default 'tmdb',
   fetched_at        timestamptz not null default now(),  -- TMDB: max. 6 Monate speichern, dann auffrischen
   created_at        timestamptz not null default now(),
@@ -89,3 +91,15 @@ create policy "Eigene Bewertungen ändern" on public.user_title_feedback
 drop policy if exists "Eigene Bewertungen löschen" on public.user_title_feedback;
 create policy "Eigene Bewertungen löschen" on public.user_title_feedback
   for delete to authenticated using ((select auth.uid()) = user_id);
+
+-- ---------------------------------------------------------------------
+-- 4) Filmreihen: merkt sich, welche Reihen schon auf Vollständigkeit geprüft wurden.
+--    Keine Regeln (policies) = nur der Server der App darf darauf zugreifen.
+-- ---------------------------------------------------------------------
+create table if not exists public.collections (
+  id         integer primary key,
+  name       text,
+  checked_at timestamptz
+);
+alter table public.collections enable row level security;
+create index if not exists titles_collection_idx on public.titles (collection_id);

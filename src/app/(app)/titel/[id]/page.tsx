@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Poster from "@/components/Poster";
+import TitleCard from "@/components/TitleCard";
 import FeedbackControls from "@/components/FeedbackControls";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { formatRuntime, type Status, type Title } from "@/lib/types";
@@ -23,6 +24,16 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
   ]);
   if (!t) notFound();
   const title = t as Title;
+
+  // Andere Teile derselben Filmreihe (falls im Katalog)
+  const { data: siblings } = title.collection_id
+    ? await supabase
+        .from("titles")
+        .select("id,title,poster_path,release_year,format")
+        .eq("collection_id", title.collection_id)
+        .neq("id", title.id)
+        .order("release_year", { ascending: true })
+    : { data: null };
 
   const runtime = formatRuntime(title.runtime_seconds);
   const facts = [
@@ -75,6 +86,21 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
           initialStatus={(fb?.status as Status) ?? null}
           initialRating={fb?.rating ?? null}
         />
+
+        {title.collection_name && (
+          <div style={{ marginTop: 22 }}>
+            <h2>Teil der Reihe: {title.collection_name}</h2>
+            {siblings && siblings.length > 0 ? (
+              <div className="grid">
+                {(siblings as Title[]).map((s) => (
+                  <TitleCard key={s.id} t={s} />
+                ))}
+              </div>
+            ) : (
+              <p className="muted small">Die anderen Teile sind noch nicht im Katalog.</p>
+            )}
+          </div>
+        )}
 
         <p className="muted small" style={{ marginTop: 16 }}>
           Die tiefen Merkmale (Stimmung, Komplexität, Humor …) kommen in Stufe 2.

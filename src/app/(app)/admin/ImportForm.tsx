@@ -1,7 +1,14 @@
 "use client";
 
 import { useActionState } from "react";
-import { importDirector, importHollywood, type FormState } from "@/app/actions";
+import {
+  completeCollections,
+  importDirector,
+  importFranchise,
+  importHollywood,
+  refreshOldMovies,
+  type FormState,
+} from "@/app/actions";
 
 const DECADES = [
   ["2020", "2020 bis heute"],
@@ -85,5 +92,62 @@ export function DirectorForm() {
       </button>
       <Status state={state} />
     </form>
+  );
+}
+
+// Import 3: Franchise (alle Reihen mit diesem Namen)
+export function FranchiseForm() {
+  const [state, action, pending] = useActionState<FormState, FormData>(importFranchise, {});
+  return (
+    <form action={action} className="panel">
+      <h2 style={{ marginTop: 0 }}>Franchise hinzufügen</h2>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Holt alle Filmreihen mit diesem Namen. „Spider-Man“ bringt z. B. die Filme mit Tobey Maguire,
+        Andrew Garfield, Tom Holland und die Animationsfilme. Tipp: englische Namen funktionieren am besten.
+      </p>
+      <div className="field">
+        <label htmlFor="fname">Name</label>
+        <input id="fname" name="name" className="input" placeholder="z. B. Star Wars, Fast & Furious, Batman" required autoComplete="off" />
+      </div>
+      <label className="row small" style={{ marginBottom: 6 }}>
+        <input type="checkbox" name="useKeyword" style={{ width: 20, height: 20 }} />
+        Zusätzlich per Stichwort suchen – für Film-Universen, z. B. „marvel cinematic universe“
+      </label>
+      <div className="field">
+        <label htmlFor="fminVotes">Bei Stichwort-Suche: mindestens so viele Bewertungen</label>
+        <input id="fminVotes" name="minVotes" type="number" min={0} step={50} defaultValue={300} className="input" />
+      </div>
+      <button className="btn primary" disabled={pending} style={{ width: "100%" }}>
+        {pending ? "Importiere … (bis zu 1 Minute)" : "Franchise hinzufügen"}
+      </button>
+      <Status state={state} />
+    </form>
+  );
+}
+
+// Wartung: Reihen vervollständigen und alte Einträge auffrischen
+export function MaintenanceForms() {
+  const [cState, cAction, cPending] = useActionState<FormState>(completeCollections, {});
+  const [rState, rAction, rPending] = useActionState<FormState>(refreshOldMovies, {});
+  return (
+    <div className="panel">
+      <h2 style={{ marginTop: 0 }}>Katalog pflegen</h2>
+      <form action={rAction} style={{ marginBottom: 18 }}>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          <strong>1. Ältere Filme auffrischen:</strong> lädt Regie, Studios und Filmreihe für Filme nach,
+          die vor dieser Funktion importiert wurden. Netflix-Filme werden dabei entfernt.
+        </p>
+        <button className="btn" disabled={rPending}>{rPending ? "Frische auf …" : "Ältere Filme auffrischen"}</button>
+        <Status state={rState} />
+      </form>
+      <form action={cAction}>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          <strong>2. Filmreihen vervollständigen:</strong> Ist ein Teil einer Reihe im Katalog (z. B. Sicario),
+          kommen die übrigen Teile dazu (Sicario 2). Pro Klick bis zu 10 Reihen.
+        </p>
+        <button className="btn" disabled={cPending}>{cPending ? "Prüfe Reihen …" : "Filmreihen vervollständigen"}</button>
+        <Status state={cState} />
+      </form>
+    </div>
   );
 }

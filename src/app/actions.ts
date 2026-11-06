@@ -9,6 +9,9 @@ import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabas
 import {
   DECADES,
   IMPORT_LISTS,
+  collectionParts,
+  keywordMovies,
+  searchCollections,
   directorMovies,
   discoverHollywood,
   fetchListIds,
@@ -154,7 +157,7 @@ async function importMovieIds(ids: number[], onlyMajor: boolean) {
   const admin = createAdminClient();
   const results = await mapLimit(ids, 8, (id) => fetchTitleRow("movie", id));
   let failed = 0, netflix = 0, small = 0;
-  const rows = [];
+  const rows: Awaited<ReturnType<typeof fetchTitleRow>>[] = [];
   for (const r of results) {
     if (r.status !== "fulfilled") { failed++; continue; }
     if (isNetflix(r.value.studios)) { netflix++; continue; }
@@ -245,4 +248,147 @@ export async function removeAllSeries(): Promise<void> {
   await createAdminClient().from("titles").delete().eq("media_type", "tv");
   revalidatePath("/");
   revalidatePath("/admin");
+}
+
+// ---------------- Filmreihen ----------------
+
+// Welche Filme (TMDB-IDs) sind schon im Katalog?
+async function existingMovieIds(ids: number[]) {
+  if (!ids.length) return new Set<number>();
+  const { data } = await createAdminClient()
+    .from("titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", ids);
+  return new Set((data ?? []).map((r) => r.tmdb_id as number));
+}
+
+async function markCollectionsChecked(list: { id: number; name: string }[]) {
+  if (!list.length) return;
+  await createAdminClient().from("collections").upsert(
+    list.map((c) => ({ id: c.id, name: c.name, checked_at: new Date().toISOString() })),
+  );
+}
+
+// Ergänzt fehlende Teile von Filmreihen, die schon im Katalog vertreten sind.
+// Arbeitet pro Klick höchstens 10 Reihen ab, damit der Server nicht zu lange braucht.
+export async function completeCollections(): Promise<FormState> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) return { error: "Nur für Admins." };
+  const admin = createAdminClient();
+
+  const [{ data: inCatalog, error }, { data: checked }] = await Promise.all([
+    admin.from("titles").select("collection_id,collection_name").not("collection_id", "is", null),
+    admin.from("collections").select("id").not("checked_at", "is", null),
+  ]);
+  if (error) return { error: "Datenbank-Fehler: " + error.message + " (wurde die Ergänzung 3 im SQL Editor ausgeführt?)" };
+
+  const done = new Set((checked ?? []).map((c) => c.id as number));
+  const open = new Map<number, string>();
+  for (const r of inCatalog ?? []) {
+    const id = r.collection_id as number;
+    if (!done.has(id)) open.set(id, r.collection_name as string);
+  }
+  if (open.size === 0) return { message: "Alle Filmreihen im Katalog sind vollständig. 👍" };
+
+  const batch = [...open.entries()].slice(0, 10);
+  const total = { ok: 0, failed: 0, netflix: 0, small: 0 };
+  const processed: { id: number; name: string }[] = [];
+  try {
+    for (const [id, name] of batch) {
+      const parts = await collectionParts(id);
+      const have = await existingMovieIds(parts.ids);
+      const missing = parts.ids.filter((x) => !have.has(x));
+      if (missing.length) {
+        const r = await importMovieIds(missing, false);
+        total.ok += r.ok; total.failed += r.failed; total.netflix += r.netflix;
+      }
+      processed.push({ id, name: parts.name || name });
+    }
+  } catch (e) {
+    await markCollectionsChecked(processed);
+    return { error: "Fehler: " + (e instanceof Error ? e.message : String(e)) };
+  }
+  await markCollectionsChecked(processed);
+  revalidatePath("/");
+
+  const rest = open.size - processed.length;
+  return {
+    message: `${processed.length} Reihen geprüft (${processed.map((p) => p.name).join(", ")}): ${summary(total)}. ` +
+      (rest > 0 ? `Noch ${rest} Reihen offen – einfach nochmal klicken.` : "Alle Reihen sind jetzt vollständig."),
+  };
+}
+
+// Franchise importieren: alle Filmreihen mit diesem Namen (+ optional Stichwort-Suche).
+export async function importFranchise(_: FormState, formData: FormData): Promise<FormState> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) return { error: "Nur für Admins." };
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (name.length < 2) return { error: "Bitte einen Namen eingeben." };
+  const useKeyword = formData.get("useKeyword") === "on";
+  const minVotes = Math.max(0, Number(formData.get("minVotes")) || 0);
+
+  try {
+    const collections = await searchCollections(name);
+    const ids = new Set<number>();
+    const names: string[] = [];
+    for (const c of collections) {
+      const parts = await collectionParts(c.id);
+      parts.ids.forEach((x) => ids.add(x));
+      names.push(parts.name);
+    }
+    let kwInfo = "";
+    if (useKeyword) {
+      const kw = await keywordMovies(name, minVotes);
+      if (kw) {
+        kw.ids.forEach((x) => ids.add(x));
+        kwInfo = ` + Stichwort „${kw.keyword}“ (${kw.ids.length} Filme)`;
+      } else {
+        kwInfo = " (kein passendes Stichwort gefunden)";
+      }
+    }
+    if (ids.size === 0) return { error: `Nichts gefunden für „${name}“.` };
+
+    const have = await existingMovieIds([...ids]);
+    const missing = [...ids].filter((x) => !have.has(x)).slice(0, 70);
+    const r = missing.length ? await importMovieIds(missing, false) : { ok: 0, failed: 0, netflix: 0, small: 0 };
+    await markCollectionsChecked(collections.map((c, i) => ({ id: c.id, name: names[i] ?? c.name })));
+    revalidatePath("/");
+
+    const found = names.length ? `Reihen: ${names.join(", ")}` : "Keine Filmreihe gefunden";
+    return {
+      message: `${found}${kwInfo}. ${have.size} waren schon im Katalog, ${summary(r)}. Filme im Katalog: ${await catalogMovieCount()}.`,
+    };
+  } catch (e) {
+    return { error: "Fehler beim Import: " + (e instanceof Error ? e.message : String(e)) };
+  }
+}
+
+// Ältere Einträge (ohne Regie/Studio/Reihe) neu von TMDB laden. Netflix-Filme werden dabei entfernt.
+export async function refreshOldMovies(): Promise<FormState> {
+  const user = await getUser();
+  if (!isAdmin(user?.email)) return { error: "Nur für Admins." };
+  const admin = createAdminClient();
+
+  const { data, error } = await admin
+    .from("titles").select("id,tmdb_id").eq("media_type", "movie").filter("studios", "eq", "{}").limit(60);
+  if (error) return { error: "Datenbank-Fehler: " + error.message };
+  if (!data?.length) return { message: "Alle Filme sind auf dem neuesten Stand. 👍" };
+
+  const results = await mapLimit(data, 8, (t) => fetchTitleRow("movie", t.tmdb_id as number));
+  const rows: Awaited<ReturnType<typeof fetchTitleRow>>[] = [];
+  const netflixIds: number[] = [];
+  results.forEach((r, i) => {
+    if (r.status !== "fulfilled") return;
+    if (isNetflix(r.value.studios)) netflixIds.push(data[i].id as number);
+    else rows.push(r.value);
+  });
+  if (rows.length) {
+    const up = await admin.from("titles").upsert(rows, { onConflict: "media_type,tmdb_id" });
+    if (up.error) return { error: "Fehler beim Speichern: " + up.error.message };
+  }
+  if (netflixIds.length) await admin.from("titles").delete().in("id", netflixIds);
+  revalidatePath("/");
+  return {
+    message: `${rows.length} Filme aufgefrischt${netflixIds.length ? `, ${netflixIds.length} Netflix-Filme entfernt` : ""}.` +
+      (data.length === 60 ? " Es gibt noch mehr – einfach nochmal klicken." : ""),
+  };
 }
