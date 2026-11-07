@@ -8,7 +8,9 @@ import type { DuelCard } from "@/app/ki-actions";
 
 const LABELS: DeckLabels = { yes: "Reizt mich", no: "Eher nicht", stampYes: "REIZT MICH", stampNo: "EHER NICHT", eyebrow: "Würdest du den schauen?" };
 
-export default function CheckPlay({ initialCards, answered }: { initialCards: DuelCard[]; answered: number }) {
+export default function CheckPlay({ initialCards, answered, onRoundDone }: {
+  initialCards: DuelCard[]; answered: number; onRoundDone?: () => void; // Tutorial: nach einer Runde weiter
+}) {
   const [cards, setCards] = useState(initialCards);
   const [round, setRound] = useState(0);
   const [done, setDone] = useState(answered);
@@ -36,7 +38,7 @@ export default function CheckPlay({ initialCards, answered }: { initialCards: Du
   if (cards.length && !finished) {
     return <DuelDeck key={round} cards={cards} labels={LABELS}
       onAnswer={async (id, a) => { await checkAnswer(id, a); if (a === "passt" || a === "passt_nicht") setDone((n) => n + 1); }}
-      onFinished={() => { setFinished(true); setCards([]); }} />;
+      onFinished={() => { if (onRoundDone) { onRoundDone(); return; } setFinished(true); setCards([]); }} />;
   }
   return (
     <div className="panel" style={{ textAlign: "center", display: "grid", gap: 10 }}>

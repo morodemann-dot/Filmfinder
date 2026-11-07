@@ -265,3 +265,4 @@ notify pgrst, 'reload schema';
 alter table public.titles add column if not exists tmdb_recs integer[];          -- TMDB-IDs der empfohlenen Filme (beste zuerst)
 alter table public.titles add column if not exists recs_checked_at timestamptz;  -- wann zuletzt abgeholt
 notify pgrst, 'reload schema';
+alter table public.profiles add column if not exists onboarding_done_at timestamptz;

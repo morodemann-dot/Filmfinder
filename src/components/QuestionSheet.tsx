@@ -19,15 +19,16 @@ export function ReasonSheet({ title, onDone }: { title: string; onDone: (r: Reas
   );
 }
 
-export function AspectSheet({ title, info, rating, onDone }: {
+export function AspectSheet({ title, info, rating, onDone, required = false, heading, groupsRating, className = "" }: {
   title: string; info: AspectInfo; rating: number; onDone: (aspects: string[]) => void;
+  required?: boolean; heading?: string; groupsRating?: number; className?: string; // für das Einstiegs-Tutorial
 }) {
   const [chosen, setChosen] = useState<string[]>([]);
-  const groups = aspectGroups(info, rating);
+  const groups = aspectGroups(info, groupsRating ?? rating);
   const toggle = (k: string) => setChosen((c) => (c.includes(k) ? c.filter((x) => x !== k) : c.length >= 4 ? c : [...c, k]));
   return (
-    <div className="question-sheet" role="dialog" aria-label="Kurze Frage">
-      <div className="eyebrow" style={{ marginBottom: 2 }}>{aspectTitle(rating)}</div>
+    <div className={`question-sheet ${className}`} role="dialog" aria-label="Kurze Frage">
+      <div className="eyebrow" style={{ marginBottom: 2 }}>{heading ?? aspectTitle(rating)}</div>
       <div className="caption" style={{ marginBottom: 8 }}>„{title}“ · {rating}/10 · bis zu 4 antippen</div>
       <div className="q-scroll">
         {groups.map((g, gi) => (
@@ -45,7 +46,7 @@ export function AspectSheet({ title, info, rating, onDone }: {
         ))}
       </div>
       <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
-        <button className="linkish" onClick={() => onDone([])}>Überspringen</button>
+        {required ? <span className="caption">mindestens 1 antippen</span> : <button className="linkish" onClick={() => onDone([])}>Überspringen</button>}
         <button className="btn primary" disabled={!chosen.length} onClick={() => onDone(chosen)}>Fertig</button>
       </div>
     </div>

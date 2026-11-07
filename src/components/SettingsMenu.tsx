@@ -31,6 +31,7 @@ export default function SettingsMenu({ admin }: { admin: boolean }) {
           <ThemePicker />
           <nav className="settings-links" onClick={() => setOpen(false)}>
             {admin && <Link href="/admin" role="menuitem">Katalog <span>›</span></Link>}
+            <Link href="/start?neu=1" role="menuitem">Einstieg wiederholen <span>›</span></Link>
             <Link href="/ueber" role="menuitem">Über die App <span>›</span></Link>
           </nav>
           <form action={logout}>
