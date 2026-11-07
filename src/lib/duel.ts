@@ -23,7 +23,9 @@ export const ALL_SOURCES: SourceDef[] = [
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 
 // Wer tritt in neuen Runden gegeneinander an?
-export const DUEL_SOURCES: SourceDef[] = [byKey("ohne"), byKey("interesse"), byKey("interesse_haiku_ki")];
+// Runde 1–5: ohne / Haiku / Haiku nur KI (alle 38 %). Rücktest: Interesse ~75 %, KI bringt nichts dazu.
+// Jetzt: Interesse normal vs. ×2 vs. mit Haiku (alle Merkmale)
+export const DUEL_SOURCES: SourceDef[] = [byKey("interesse"), byKey("interesse_stark"), byKey("interesse_haiku")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
 export const EVAL_SOURCES: SourceDef[] = ["ohne", "haiku_ki", "interesse", "interesse_stark", "interesse_haiku_ki", "interesse_haiku"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];

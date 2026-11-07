@@ -174,8 +174,8 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }
       <div className="panel">
         <div className="eyebrow" style={{ marginBottom: 4 }}>3 · Modell-Duell (blind)</div>
         <p className="caption" style={{ marginTop: 0 }}>
-          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1990, die du noch nicht eingeordnet hast: „Bisher“ (v. a. allgemeine Qualität),
-          „Neu: Interesse“ (lernt, welche Art von Filmen du schaust) und „Neu: Interesse + Haiku“ (zusätzlich die KI-Merkmale).
+          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1990, die du noch nicht eingeordnet hast: „Neu: Interesse“
+          (lernt, welche Art von Filmen du schaust), „Interesse ×2“ (noch stärker darauf ausgerichtet) und „Interesse + Haiku“ (zusätzlich die KI-Merkmale).
           Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
           Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
           Diese Antworten fließen <strong>nicht</strong> in dein Geschmacksprofil ein.
