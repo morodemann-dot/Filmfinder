@@ -13,7 +13,7 @@ import type { Title } from "./types";
 
 export type RatedTitle = Title & { rating: number | null; status: string };
 
-type FeatureKind =
+export type FeatureKind =
   | "genre" | "regie" | "besetzung" | "reihe" | "jahrzehnt" | "preise"
   | "subgenre" | "thema" | "drehbuch" | "kamera" | "musik" | "vorlage" | "stil" | "budget";
 
@@ -44,6 +44,30 @@ const NOISE_KEYWORDS = new Set([
   "duringcreditsstinger", "aftercreditsstinger", "woman director", "sequel", "remake", "based on novel or book",
   "based on comic", "3d", "imax", "live action remake", "shot on imax", "independent film", "male protagonist",
 ]);
+// Verständliche Namen der Merkmalsarten (für den Messtest)
+export const KIND_NAMES: Record<FeatureKind, string> = {
+  genre: "Genres", regie: "Regie", besetzung: "Besetzung", reihe: "Filmreihen", jahrzehnt: "Jahrzehnt",
+  preise: "Preise & Nominierungen", subgenre: "Feine Genres", thema: "Themen & Stichworte", drehbuch: "Drehbuch",
+  kamera: "Kamera", musik: "Filmmusik", vorlage: "Vorlage (Buch, Comic …)", stil: "Schwarzweiß", budget: "Budget",
+};
+
+// Allgemeine Qualität: TMDB-Bewertung, vorsichtig gerechnet.
+// Wenige Stimmen werden zum Mittelwert (6,6) hingezogen – 8,5 bei 40 Stimmen zählt kaum.
+const QUALITY_PRIOR = 6.6;
+const QUALITY_VOTES = 800;
+export const QUALITY_WEIGHT = 0.3; // wie stark Qualität neben deinem Geschmack zählt
+export function qualityOf(t: Title): number | null {
+  if (t.vote_average == null || !t.vote_count) return null;
+  const q = (t.vote_average * t.vote_count + QUALITY_PRIOR * QUALITY_VOTES) / (t.vote_count + QUALITY_VOTES);
+  return q - QUALITY_PRIOR; // ca. −2 bis +2
+}
+
+export type ScoreOptions = {
+  qualityWeight?: number; // Standard: QUALITY_WEIGHT
+  tasteWeight?: number; // 0 = Geschmack ignorieren (nur für den Messtest)
+  skipKinds?: FeatureKind[]; // Merkmalsarten weglassen (nur für den Messtest)
+};
+
 const SHRINK = 2; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
 
 type Feature = { key: string; kind: FeatureKind; label: string };
@@ -156,11 +180,14 @@ function reasonText(p: Preference) {
   return `${head} (${evidence})`;
 }
 
-export function recommend(candidates: Title[], prefs: Map<string, Preference>): Recommendation[] {
+export function recommend(candidates: Title[], prefs: Map<string, Preference>, opts: ScoreOptions = {}): Recommendation[] {
+  const qw = opts.qualityWeight ?? QUALITY_WEIGHT;
+  const tw = opts.tasteWeight ?? 1;
+  const skip = new Set(opts.skipKinds ?? []);
   const out: Recommendation[] = [];
   for (const t of candidates) {
-    const feats = featuresOf(t);
-    if (!feats.length) continue;
+    const feats = featuresOf(t).filter((f) => !skip.has(f.kind));
+    if (!feats.length && !qw) continue;
 
     // Pro Merkmalsart den Durchschnitt nehmen (damit 5 Schauspieler nicht 5-fach zählen)
     const byKind = new Map<FeatureKind, Preference[]>();
@@ -175,9 +202,11 @@ export function recommend(candidates: Title[], prefs: Map<string, Preference>): 
     const contrib: { p: Preference; c: number }[] = [];
     for (const [kind, ps] of byKind) {
       const avg = ps.reduce((s, p) => s + p.pref, 0) / ps.length;
-      score += KIND_WEIGHT[kind] * avg;
-      for (const p of ps) contrib.push({ p, c: (KIND_WEIGHT[kind] * p.pref) / ps.length });
+      score += tw * KIND_WEIGHT[kind] * avg;
+      for (const p of ps) contrib.push({ p, c: (tw * KIND_WEIGHT[kind] * p.pref) / ps.length });
     }
+    const q = qualityOf(t);
+    if (q != null) score += qw * q;
     // Ganz leichter Bonus für bekannte Filme, nur als Gleichstand-Entscheider
     score += Math.log10(1 + (t.popularity ?? 0)) * 0.02;
 
@@ -186,6 +215,8 @@ export function recommend(candidates: Title[], prefs: Map<string, Preference>): 
       .sort((a, b) => b.c - a.c)
       .slice(0, 3)
       .map((x) => reasonText(x.p));
+    if (q != null && qw * q >= 0.25 && reasons.length < 3)
+      reasons.push(`Allgemein sehr gut bewertet (TMDB ${t.vote_average!.toLocaleString("de-DE", { maximumFractionDigits: 1 })})`);
     out.push({ title: t, score, reasons, coverage: known / feats.length });
   }
   return out.sort((a, b) => b.score - a.score);
