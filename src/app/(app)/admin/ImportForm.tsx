@@ -159,7 +159,6 @@ export function MaintenanceForms() {
 
 // Import 4: Oscar- und Golden-Globe-Gewinner seit 1980 (läuft automatisch in Etappen)
 export function AwardsForm() {
-  const [includeShorts, setIncludeShorts] = useState(true);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [stats, setStats] = useState({ ok: 0, updated: 0, netflix: 0, failed: 0 });
@@ -172,7 +171,7 @@ export function AwardsForm() {
     let offset: number | null = 0;
     try {
       while (offset !== null) {
-        const r: AwardsChunkResult = await importAwardsChunk(offset, includeShorts);
+        const r: AwardsChunkResult = await importAwardsChunk(offset, false); // Kurzfilme kommen grundsätzlich nicht in den Katalog
         total.ok += r.ok; total.updated += r.updated; total.netflix += r.netflix; total.failed += r.failed;
         setStats({ ...total });
         offset = r.next;
@@ -191,14 +190,9 @@ export function AwardsForm() {
       <h2 style={{ marginTop: 0 }}>Oscar- & Golden-Globe-Gewinner seit 1980</h2>
       <p className="muted small" style={{ marginTop: 0 }}>
         Alle Filme, die in irgendeiner Kategorie gewonnen haben – auch Preise an Personen für einen Film
-        (z. B. „Bester Hauptdarsteller“). Quelle: Wikidata. Netflix-Produktionen werden aussortiert.
+        (z. B. „Bester Hauptdarsteller“). Quelle: Wikidata. Netflix-Produktionen und Kurzfilme (unter 45 Min.) werden aussortiert.
         Bei Filmen, die schon im Katalog sind, werden die Preise nachgetragen.
       </p>
-      <label className="row small" style={{ marginBottom: 12 }}>
-        <input type="checkbox" checked={includeShorts} onChange={(e) => setIncludeShorts(e.target.checked)}
-          disabled={running} style={{ width: 20, height: 20 }} />
-        Auch Filme, die nur einen Kurzfilm-Oscar gewonnen haben (ca. 140 meist unbekannte Kurzfilme)
-      </label>
       <button className="btn primary" style={{ width: "100%" }} onClick={run} disabled={running}>
         {running ? `Importiere … ${progress?.done ?? 0} / ${progress?.total ?? "?"}` : "Preisträger importieren"}
       </button>

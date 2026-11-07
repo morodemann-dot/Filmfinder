@@ -5,7 +5,7 @@
 //  1. Sperrliste?            → überspringen
 //  2. Schon im Katalog?      → bei Vorschau überspringen, sonst Daten auffrischen
 //  3. Details von TMDB holen
-//  4. Regeln prüfen: Netflix, Herkunft, (große Studios), Qualitätsschwelle
+//  4. Regeln prüfen: Kurzfilm (< 45 Min.), Netflix, Herkunft, (große Studios), Qualitätsschwelle
 //  5. Direkt in den Katalog ODER als Kandidat in die Vorschau
 
 import { createAdminClient } from "@/lib/supabase/server";
@@ -34,15 +34,21 @@ export type ImportOpts = {
 };
 
 export type ImportResult = {
-  ok: number; staged: number; failed: number; netflix: number; small: number; origin: number; quality: number;
+  ok: number; staged: number; failed: number; netflix: number; small: number; origin: number; quality: number; short: number;
 };
 
-export const EMPTY_RESULT: ImportResult = { ok: 0, staged: 0, failed: 0, netflix: 0, small: 0, origin: 0, quality: 0 };
+// Kürzere Filme (oder ohne Laufzeitangabe) gelten als Kurzfilm/Musikvideo und kommen nicht in den Katalog.
+export const MIN_RUNTIME_MIN = 45;
+export function isShortFilm(t: { runtime_seconds: number | null }) {
+  return !t.runtime_seconds || t.runtime_seconds < MIN_RUNTIME_MIN * 60;
+}
+
+export const EMPTY_RESULT: ImportResult = { ok: 0, staged: 0, failed: 0, netflix: 0, small: 0, origin: 0, quality: 0, short: 0 };
 
 export function addResults(a: ImportResult, b: ImportResult): ImportResult {
   return {
     ok: a.ok + b.ok, staged: a.staged + b.staged, failed: a.failed + b.failed, netflix: a.netflix + b.netflix,
-    small: a.small + b.small, origin: a.origin + b.origin, quality: a.quality + b.quality,
+    small: a.small + b.small, origin: a.origin + b.origin, quality: a.quality + b.quality, short: a.short + b.short,
   };
 }
 
@@ -51,6 +57,7 @@ export function summary(s: Partial<ImportResult>) {
   if (s.staged) parts.push(`${s.staged} neue Kandidaten warten auf deine Prüfung`);
   if (s.ok || !s.staged) parts.push(`${s.ok ?? 0} Filme übernommen`);
   if (s.quality) parts.push(`${s.quality} unter der Qualitätsschwelle`);
+  if (s.short) parts.push(`${s.short} Kurzfilme/ohne Laufzeit übersprungen`);
   if (s.netflix) parts.push(`${s.netflix} Netflix-Filme aussortiert`);
   if (s.origin) parts.push(`${s.origin} wegen Herkunft übersprungen`);
   if (s.small) parts.push(`${s.small} ohne großes Studio`);
@@ -88,6 +95,7 @@ export async function importMovieIds(ids: number[], opts: ImportOpts = {}): Prom
   for (const r of results) {
     if (r.status !== "fulfilled") { res.failed++; continue; }
     const t = r.value;
+    if (isShortFilm(t)) { res.short++; continue; } // Kurzfilme & Musikvideos: nie, auch nicht bei Preisen
     if (isNetflix(t.studios)) { res.netflix++; continue; }
     const awarded = t.oscars.length + t.globes.length > 0;
     if (!awarded && excludedOrigin(t)) { res.origin++; continue; }

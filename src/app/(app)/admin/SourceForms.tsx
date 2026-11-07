@@ -57,7 +57,7 @@ export function SettingsPanel({ settings }: { settings: CatalogSettings }) {
       </summary>
       <p className="caption">
         Gilt für alle Importe. Immer ausgenommen von der Qualitätsschwelle: Oscar-/Golden-Globe-Gewinner, Festival-Gewinner
-        und Kritiker-Kanon. Immer aussortiert: Netflix-Produktionen und ausgeschlossene Herkunft (außer Oscar/Globe).
+        und Kritiker-Kanon. Immer aussortiert: Kurzfilme unter 45 Min. (auch ohne Laufzeitangabe), Netflix-Produktionen und ausgeschlossene Herkunft (außer Oscar/Globe).
       </p>
       <form action={action}>
         <div className="row" style={{ gap: 12 }}>
@@ -164,14 +164,14 @@ export function ListForm({ list }: { list: ListKey }) {
 
   async function run() {
     setRunning(true); setError(null); setFinished(false);
-    let total: ImportResult = { ok: 0, staged: 0, failed: 0, netflix: 0, small: 0, origin: 0, quality: 0 };
+    let total: ImportResult = { ok: 0, staged: 0, failed: 0, netflix: 0, small: 0, origin: 0, quality: 0, short: 0 };
     let offset: number | null = 0;
     try {
       while (offset !== null) {
         const r = await importListChunk(list, offset, stage);
         total = {
           ok: total.ok + r.ok, staged: total.staged + r.staged, failed: total.failed + r.failed, netflix: total.netflix + r.netflix,
-          small: 0, origin: total.origin + r.origin, quality: total.quality + r.quality,
+          small: 0, origin: total.origin + r.origin, quality: total.quality + r.quality, short: total.short + r.short,
         };
         setStats(total);
         setProgress({ done: r.next ?? r.total, total: r.total });
@@ -202,6 +202,7 @@ export function ListForm({ list }: { list: ListKey }) {
         <p className="small">
           {stage ? `${stats.staged} neue Kandidaten` : `${stats.ok} übernommen`}
           {stats.origin > 0 && ` · ${stats.origin} wegen Herkunft übersprungen`}
+          {stats.short > 0 && ` · ${stats.short} Kurzfilme übersprungen`}
           {stats.netflix > 0 && ` · ${stats.netflix} Netflix`}
           {stats.failed > 0 && ` · ${stats.failed} fehlgeschlagen`}
         </p>

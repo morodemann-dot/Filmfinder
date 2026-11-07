@@ -14,6 +14,7 @@ export type ManageTitle = {
   original_language: string | null;
   countries: string[] | null;
   globes: string[] | null;
+  runtime_seconds: number | null;
   title: string;
   release_year: number | null;
   media_type: string;
@@ -39,6 +40,13 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
   const [limit, setLimit] = useState(200);
   const [onlyDupes, setOnlyDupes] = useState(false);
   const [onlyOrigin, setOnlyOrigin] = useState(false);
+  const [onlyShort, setOnlyShort] = useState(false);
+
+  // Kurzfilme / Musikvideos: unter 45 Minuten oder ohne Laufzeitangabe (nur Filme, nicht Serien)
+  const shortIds = useMemo(
+    () => new Set(titles.filter((t) => t.media_type === "movie" && (!t.runtime_seconds || t.runtime_seconds < 45 * 60)).map((t) => t.id)),
+    [titles],
+  );
 
   // Chinesische, russische, indische Produktionen (Preisträger ausgenommen)
   const originReason = useMemo(() => {
@@ -77,13 +85,13 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
     const q = query.trim().toLowerCase();
     const list = titles.filter(
       (t) => (kind === "alle" || t.media_type === kind) && (!q || t.title.toLowerCase().includes(q) || String(t.release_year) === q) &&
-        (!onlyDupes || dupeIds.has(t.id)) && (!onlyOrigin || originReason.has(t.id)),
+        (!onlyDupes || dupeIds.has(t.id)) && (!onlyOrigin || originReason.has(t.id)) && (!onlyShort || shortIds.has(t.id)),
     );
     if (sort === "titel" || onlyDupes) list.sort((a, b) => a.title.localeCompare(b.title, "de") || (a.release_year ?? 0) - (b.release_year ?? 0));
     else if (sort === "jahr") list.sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0));
     else list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     return list;
-  }, [titles, query, sort, kind, onlyDupes, dupeIds, onlyOrigin, originReason]);
+  }, [titles, query, sort, kind, onlyDupes, dupeIds, onlyOrigin, originReason, onlyShort, shortIds]);
 
   const allVisibleSelected = visible.length > 0 && visible.every((t) => selected.has(t.id));
 
@@ -148,10 +156,13 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
               <option value="tv">Nur Serien</option>
             </select>
           </label>
-          <button className={`pill ${onlyOrigin ? "on" : ""}`} onClick={() => { setOnlyOrigin((d) => !d); setOnlyDupes(false); setSelected(new Set()); }}>
+          <button className={`pill ${onlyShort ? "on" : ""}`} onClick={() => { setOnlyShort((d) => !d); setOnlyOrigin(false); setOnlyDupes(false); setSelected(new Set()); }}>
+            Kurzfilme {shortIds.size > 0 && <span className="count">{shortIds.size}</span>}
+          </button>
+          <button className={`pill ${onlyOrigin ? "on" : ""}`} onClick={() => { setOnlyOrigin((d) => !d); setOnlyDupes(false); setOnlyShort(false); setSelected(new Set()); }}>
             Ausgeschl. Herkunft {originReason.size > 0 && <span className="count">{originReason.size}</span>}
           </button>
-          <button className={`pill ${onlyDupes ? "on" : ""}`} onClick={() => { setOnlyDupes((d) => !d); setOnlyOrigin(false); setSelected(new Set()); }}>
+          <button className={`pill ${onlyDupes ? "on" : ""}`} onClick={() => { setOnlyDupes((d) => !d); setOnlyOrigin(false); setOnlyShort(false); setSelected(new Set()); }}>
             Mögliche Duplikate {dupeIds.size > 0 && <span className="count">{dupeIds.size}</span>}
           </button>
           <button className="pill" onClick={toggleAllVisible}>
@@ -184,6 +195,13 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
         {error && <div className="error">{error}</div>}
       </div>
 
+      {onlyShort && (
+        <p className="caption">
+          {shortIds.size === 0
+            ? "Keine Kurzfilme im Katalog. 👍"
+            : "Filme unter 45 Minuten oder ohne Laufzeitangabe (oft Kurzfilme oder Musikvideos). Tipp: „Alle auswählen“ → entfernen."}
+        </p>
+      )}
       {onlyOrigin && (
         <p className="caption">
           {originReason.size === 0
@@ -210,7 +228,8 @@ export default function CatalogManager({ titles }: { titles: ManageTitle[] }) {
             <a href={`/titel/${t.id}`} style={{ minWidth: 0 }}>
               <div className="manage-title">{t.title}</div>
               <div className="caption">
-                {[t.media_type === "tv" ? "Serie" : "Film", t.release_year, (t.oscars?.length ?? 0) > 0 ? `🏆 ${t.oscars!.length}` : null, onlyOrigin ? originReason.get(t.id) : null]
+                {[t.media_type === "tv" ? "Serie" : "Film", t.release_year, (t.oscars?.length ?? 0) > 0 ? `🏆 ${t.oscars!.length}` : null, onlyOrigin ? originReason.get(t.id) : null,
+                  onlyShort ? (t.runtime_seconds ? `${Math.round(t.runtime_seconds / 60)} Min.` : "Laufzeit unbekannt") : null]
                   .filter(Boolean).join(" · ")}
               </div>
             </a>
