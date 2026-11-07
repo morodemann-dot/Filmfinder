@@ -275,6 +275,26 @@ function reasonText(p: Preference) {
   return `${head} (${evidence})`;
 }
 
+// Gewichte fürs Interesse: Es soll vor allem die ART des Films treffen (Genre, Thema, Zeit),
+// nicht "noch ein Teil derselben Reihe / mit denselben Schauspielern" – sonst flutet z. B. das MCU alles.
+const INTEREST_WEIGHT: Record<FeatureKind, number> = {
+  genre: 1.0, subgenre: 0.7, thema: 0.5, jahrzehnt: 0.4, vorlage: 0.3, budget: 0.3, stil: 0.3, preise: 0.2,
+  regie: 0.35, besetzung: 0.15, reihe: 0.4, drehbuch: 0.15, kamera: 0.1, musik: 0.1,
+  ...aiRecord(() => 0.4),
+};
+
+// Große Film-Universen, die bei TMDB aus vielen einzelnen Reihen bestehen – für die Vielfalt zählen sie als eine Gruppe
+const UNIVERSES: [string, RegExp][] = [
+  ["Marvel", /^Marvel Studios$/i],
+  ["Star Wars", /^Lucasfilm/i],
+  ["DC", /^(DC Films|DC Studios|DC Entertainment|DC Comics)$/i],
+  ["Wizarding World", /^Heyday Films$/i],
+];
+export function franchiseOf(t: Title): string | null {
+  for (const [name, re] of UNIVERSES) if ((t.studios ?? []).some((s) => re.test(s))) return name;
+  return t.collection_id ? `reihe:${t.collection_id}` : null;
+}
+
 const INTEREST_REASON_KINDS = new Set<FeatureKind>(["genre", "subgenre", "regie", "reihe", "thema", "besetzung", "vorlage", ...AI_KINDS]);
 
 function interestText(it: Interest) {
@@ -321,9 +341,9 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
         if (it) byKindI.set(f.kind, [...(byKindI.get(f.kind) ?? []), it]);
       }
       for (const [kind, its] of byKindI) {
-        score += iw * KIND_WEIGHT[kind] * (its.reduce((s, x) => s + x.lift, 0) / its.length);
+        score += iw * INTEREST_WEIGHT[kind] * (its.reduce((s, x) => s + x.lift, 0) / its.length);
         for (const it of its)
-          if (INTEREST_REASON_KINDS.has(kind) && it.lift > 0.4 && it.mine >= 3 && (!topInterest || it.lift * KIND_WEIGHT[kind] > topInterest.lift * KIND_WEIGHT[topInterest.kind])) topInterest = it;
+          if (INTEREST_REASON_KINDS.has(kind) && it.lift > 0.4 && it.mine >= 3 && (!topInterest || it.lift * INTEREST_WEIGHT[kind] > topInterest.lift * INTEREST_WEIGHT[topInterest.kind])) topInterest = it;
       }
     }
     // Ganz leichter Bonus für bekannte Filme, nur als Gleichstand-Entscheider
@@ -353,17 +373,19 @@ export function topPreferences(prefs: Map<string, Preference>, count = 6) {
 
 // Vielfalt (hart, für zufällige Auswahl ohne Punkte): höchstens maxColl Filme pro Filmreihe, maxDir pro Regie.
 export function diversify<T extends Title>(sorted: T[], n: number, taken: Title[] = [], maxColl = 2, maxDir = 3): T[] {
-  const coll = new Map<number, number>();
+  const coll = new Map<string, number>();
   const dirs = new Map<string, number>();
   const count = (t: Title) => {
-    if (t.collection_id) coll.set(t.collection_id, (coll.get(t.collection_id) ?? 0) + 1);
+    const fr = franchiseOf(t);
+    if (fr) coll.set(fr, (coll.get(fr) ?? 0) + 1);
     for (const d of t.directors ?? []) dirs.set(d, (dirs.get(d) ?? 0) + 1);
   };
   taken.forEach(count);
   const out: T[] = [];
   for (const t of sorted) {
     if (out.length >= n) break;
-    if (t.collection_id && (coll.get(t.collection_id) ?? 0) >= maxColl) continue;
+    const fr = franchiseOf(t);
+    if (fr && (coll.get(fr) ?? 0) >= maxColl) continue;
     if ((t.directors ?? []).some((d) => (dirs.get(d) ?? 0) >= maxDir)) continue;
     out.push(t);
     count(t);
@@ -376,21 +398,24 @@ export function diversify<T extends Title>(sorted: T[], n: number, taken: Title[
 // dürfen sie trotzdem alle kommen – sonst rückt Abwechslung nach.
 export function pickDiverse(recs: Recommendation[], n: number): Recommendation[] {
   const pool = recs.slice(0, Math.max(n * 8, 60));
-  const coll = new Map<number, number>();
+  const coll = new Map<string, number>();
   const dirs = new Map<string, number>();
   const out: Recommendation[] = [];
   while (out.length < n && pool.length) {
     let bi = 0, bv = -Infinity;
     for (let i = 0; i < pool.length; i++) {
       const t = pool[i].title;
-      const c = t.collection_id ? coll.get(t.collection_id) ?? 0 : 0;
+      const fr = franchiseOf(t);
+      const c = fr ? coll.get(fr) ?? 0 : 0;
       const d = Math.max(0, ...(t.directors ?? []).map((x) => dirs.get(x) ?? 0));
-      const v = pool[i].score - 0.35 * c - 0.15 * d;
+      // 1. Film eines Universums: kein Abzug, 2.: −0,5, 3.: −1,0 … (in "Punkten" wie die Bewertung)
+      const v = pool[i].score - 0.5 * c - 0.2 * d;
       if (v > bv) { bv = v; bi = i; }
     }
     const [r] = pool.splice(bi, 1);
     out.push(r);
-    if (r.title.collection_id) coll.set(r.title.collection_id, (coll.get(r.title.collection_id) ?? 0) + 1);
+    const fr = franchiseOf(r.title);
+    if (fr) coll.set(fr, (coll.get(fr) ?? 0) + 1);
     for (const x of r.title.directors ?? []) dirs.set(x, (dirs.get(x) ?? 0) + 1);
   }
   return out;
@@ -401,6 +426,6 @@ export function topInterests(interest: Map<string, Interest> | null, count = 8) 
   if (!interest) return [];
   return [...interest.values()]
     .filter((x) => INTEREST_REASON_KINDS.has(x.kind) && x.kind !== "besetzung" && x.mine >= 4 && x.lift > 0.3)
-    .sort((a, b) => b.lift * KIND_WEIGHT[b.kind] - a.lift * KIND_WEIGHT[a.kind])
+    .sort((a, b) => b.lift * INTEREST_WEIGHT[b.kind] - a.lift * INTEREST_WEIGHT[a.kind])
     .slice(0, count);
 }
