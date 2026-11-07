@@ -711,3 +711,7 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .reveal-actions .btn { flex: 1; }
 .pack-stage .btn.ghost { color: rgba(255, 255, 255, 0.75); }
 @keyframes info-in { from { opacity: 0; transform: translateY(12px); } }
+.reveal-badge {
+  display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+  color: #ffd79a; background: rgba(255, 170, 60, 0.14); border: 0.5px solid rgba(255, 190, 100, 0.4);
+}

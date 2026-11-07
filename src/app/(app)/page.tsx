@@ -202,21 +202,38 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   // 5) Merkliste, passend zu den Filtern
   const watchlist = rated.filter((r) => r.status === "merkliste" && (!mood || matchesMood(r, mood)) && (!sp.genre || (r.genres ?? []).includes(sp.genre)) && matchesTime(r, time));
 
-  // 6) "Überrasch mich": besondere Filme – passen sehr gut, sind richtig gut bewertet und eher unbekannt,
-  //    und stehen nicht schon im Stapel oder bei den Geheimtipps
+  // 6) "Überrasch mich": unbekannt, aber ganz oben auf deiner Passt-Liste.
+  //    - unbekannt: untere Hälfte nach Bekanntheit, keine Reihe/kein Universum, aus dem du schon etwas kennst
+  //    - trotzdem gut: genug Stimmen bei TMDB, dass die Bewertung verlässlich ist, und gut bewertet
+  //    - passt sicher: unter deinen besten 15 % aller Vorschläge (die Gegenprobe zeigt: dort liegt die App selten daneben)
+  //    - nicht doppelt: nichts, was schon im Stapel oder bei den Geheimtipps steht
   const shownIds = new Set([...inDeck, ...gems.map((g) => g.title.id)]);
-  const special = recs.slice(0, 250)
-    .filter((r) => !shownIds.has(r.title.id) && (r.title.vote_average ?? 0) >= 7 && (r.title.vote_count ?? 0) >= 200)
-    .map((r) => ({ r, s: r.score + 0.15 * ((r.title.vote_average ?? 7) - 7) - 0.1 * Math.log10(1 + (r.title.popularity ?? 0)) }))
-    .sort((a, b) => b.s - a.s).map((x) => x.r);
-  const surprise: Surprise[] = pickDiverse(special, 12).map((r) => ({
-    id: r.title.id,
-    title: r.title.title,
-    poster_path: r.title.poster_path,
-    meta: [r.title.release_year, formatRuntime(r.title.runtime_seconds), r.title.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · "),
-    why: r.reasons.slice(0, 2).join(" · "),
-    rating: r.title.vote_average ?? null,
-  }));
+  const byPop = [...candidates].sort((a, b) => (a.popularity ?? 0) - (b.popularity ?? 0));
+  const popPct = new Map(byPop.map((t, i) => [t.id, i / Math.max(1, byPop.length - 1)]));
+  const fitPct = new Map(recs.map((r, i) => [r.title.id, i / Math.max(1, recs.length - 1)])); // 0 = passt am besten
+  const trusted = (t: Title) => {
+    const n = t.vote_count ?? 0, avg = t.vote_average ?? 0;
+    return n >= 150 && (avg * n + 6.5 * 300) / (n + 300) >= 6.8; // gut bewertet, auch wenn man wenige Stimmen vorsichtig rechnet
+  };
+  const surprisePool = (maxPop: number, maxFit: number) => recs.filter((r) => {
+    const t = r.title, f = franchiseOf(t);
+    return !shownIds.has(t.id) && !(f && knownFranchises.has(f)) && (popPct.get(t.id) ?? 1) <= maxPop && (fitPct.get(t.id) ?? 1) <= maxFit && trusted(t);
+  });
+  let special = surprisePool(0.5, 0.15);
+  if (special.length < 8) special = surprisePool(0.65, 0.3); // kleiner Katalog oder enger Filter: etwas lockerer
+  const surprise: Surprise[] = pickDiverse(special, 24).map((r) => {
+    const top = Math.max(1, Math.round((fitPct.get(r.title.id) ?? 0) * 100));
+    const votes = r.title.vote_count ?? 0;
+    return {
+      id: r.title.id,
+      title: r.title.title,
+      poster_path: r.title.poster_path,
+      meta: [r.title.release_year, formatRuntime(r.title.runtime_seconds), r.title.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · "),
+      why: r.reasons.slice(0, 2).join(" · "),
+      badge: `Top ${top} % für dich · kaum bekannt (${votes.toLocaleString("de-DE")} Stimmen)`,
+      rating: r.title.vote_average ?? null,
+    };
+  });
 
   const more = diverse.slice(DECK, DECK + 12);
   const interests = topInterests(profile.interest, 8);

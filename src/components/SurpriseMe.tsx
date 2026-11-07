@@ -6,7 +6,9 @@ import Link from "next/link";
 import Poster from "./Poster";
 import { saveFeedbackQuiet } from "@/app/actions";
 
-export type Surprise = { id: number; title: string; poster_path: string | null; meta: string; why: string; rating: number | null };
+export type Surprise = { id: number; title: string; poster_path: string | null; meta: string; why: string; badge?: string; rating: number | null };
+
+const SEEN_KEY = "ff-surprise-seen";
 
 type Phase = "idle" | "drop" | "shake" | "burst" | "reveal";
 
@@ -15,17 +17,24 @@ export default function SurpriseMe({ pool }: { pool: Surprise[] }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [film, setFilm] = useState<Surprise | null>(null);
   const [saved, setSaved] = useState(false);
-  const seen = useRef<Set<number>>(new Set());
+  const seen = useRef<Set<number> | null>(null);
   const timers = useRef<number[]>([]);
 
   if (pool.length === 0) return null;
 
   function open() {
-    const left = pool.filter((p) => !seen.current.has(p.id));
+    // Schon gezogene Filme kommen (auch an anderen Tagen) erst wieder, wenn alle anderen dran waren
+    if (!seen.current) {
+      try { seen.current = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]")); } catch { seen.current = new Set(); }
+    }
+    const done = seen.current;
+    const left = pool.filter((p) => !done.has(p.id));
+    if (!left.length) pool.forEach((p) => done.delete(p.id));
     const from = left.length ? left : pool;
-    if (!left.length) seen.current.clear();
-    const f = from[Math.floor(Math.random() * from.length)];
-    seen.current.add(f.id);
+    // die ersten im Pool passen am besten – leicht bevorzugen, aber nicht immer denselben nehmen
+    const f = from[Math.floor(Math.random() ** 1.6 * from.length)];
+    done.add(f.id);
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify([...done].slice(-150))); } catch { /* egal */ }
     setFilm(f); setSaved(false);
     timers.current.forEach(clearTimeout);
     const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -72,6 +81,7 @@ export default function SurpriseMe({ pool }: { pool: Surprise[] }) {
                 <div className="reveal-kicker">✦ Dein Überraschungsfilm</div>
                 <h2>{film.title}</h2>
                 <div className="caption">{film.meta}</div>
+                {film.badge && <div className="reveal-badge">{film.badge}</div>}
                 <p className="reveal-why">{film.why}</p>
                 <div className="reveal-actions">
                   <Link href={`/titel/${film.id}`} className="btn primary">Ansehen ›</Link>
