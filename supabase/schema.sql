@@ -260,3 +260,5 @@ create policy "Eigenes Profil" on public.profiles for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 notify pgrst, 'reload schema';
+alter table public.user_title_feedback add column if not exists favorite boolean not null default false;
+notify pgrst, 'reload schema';

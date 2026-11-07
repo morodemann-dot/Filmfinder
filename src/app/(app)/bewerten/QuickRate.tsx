@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Poster from "@/components/Poster";
 import Score, { SCORE_LABEL, scoreColor } from "@/components/Score";
-import { saveAspects, saveFeedbackQuiet as setFeedback, snoozeTitle } from "@/app/actions";
+import { saveAspects, saveFeedbackQuiet as setFeedback, setFavorite, snoozeTitle } from "@/app/actions";
 import { AspectSheet, ReasonSheet } from "@/components/QuestionSheet";
 import { shouldAskAspects, type ReasonKey } from "@/lib/aspects";
 import { useDetailMode } from "@/lib/useDetailMode";
@@ -44,6 +44,7 @@ export default function QuickRate({
     { kind: "reason"; t: RateCandidate } | { kind: "aspect"; t: RateCandidate; rating: number } | null
   >(null);
   const saving = useRef(new Map<number, Promise<unknown>>());
+  const [favs, setFavs] = useState<Set<number>>(new Set()); // als Lieblingsfilm markiert (in dieser Runde)
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -194,6 +195,17 @@ export default function QuickRate({
             </button>
           }
         />
+      </div>
+
+      <div style={{ margin: "-4px 0 14px" }}>
+        <button className={`fav-toggle ${favs.has(t.id) ? "on" : ""}`} aria-pressed={favs.has(t.id)} onClick={() => {
+          const on = !favs.has(t.id);
+          setFavs((f) => { const n = new Set(f); if (on) n.add(t.id); else n.delete(t.id); return n; });
+          const after = saving.current.get(t.id) ?? Promise.resolve();
+          saving.current.set(t.id, after.then(() => setFavorite(t.id, on)).catch(() => setError("Lieblingsfilm konnte nicht gespeichert werden (Ergänzung 16?).")));
+        }}>
+          <span aria-hidden>{favs.has(t.id) ? "♥" : "♡"}</span> {favs.has(t.id) ? "Lieblingsfilm" : "Lieblingsfilm? Antippen"}
+        </button>
       </div>
 
       <div className="row">

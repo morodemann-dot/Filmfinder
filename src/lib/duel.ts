@@ -1,11 +1,15 @@
-import { AI_KINDS, buildProfile, DEFAULT_INTEREST, KIND_NAMES, recommend, type FeatureKind, type RatedTitle } from "./recommend";
+import { AI_KINDS, buildProfile, DEFAULT_INTEREST, KIND_NAMES, recommend, type FeatureKind, type RatedTitle, type ScoreOptions } from "./recommend";
 import { tuneOptions } from "./evaluate";
 import { withAi } from "./tasteData";
 import type { AiFeatures, AiModelKey } from "./aiFeatures";
 import type { Title } from "./types";
 
 // Varianten im Modell-Duell
-export type SourceDef = { key: string; name: string; model?: AiModelKey; onlyAi?: boolean; interest?: number; quality?: number };
+export type SourceDef = { key: string; name: string; model?: AiModelKey; onlyAi?: boolean; interest?: number; quality?: number; extra?: ScoreOptions };
+
+// Verbesserungen 1–6 (Nov. 2026) – jeweils zusätzlich zur aktuellen App-Einstellung (Interesse ×1, Qualität halb)
+const APP = { interest: DEFAULT_INTEREST, quality: 0.5 };
+const ALL_EXTRAS: ScoreOptions = { interestByRating: true, similarityWeight: 2, rareKeywords: true, originWeight: 0.4, genreQuality: true, genrePairWeight: 0.6 };
 
 // "Nur KI-Merkmale": alle übrigen Merkmalsarten (Regie, Genres, Besetzung …) weglassen
 export const NON_AI_KINDS = (Object.keys(KIND_NAMES) as FeatureKind[]).filter((k) => !(AI_KINDS as string[]).includes(k));
@@ -25,6 +29,14 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "i2_q05", name: "Interesse ×2 · Qualität halb", interest: DEFAULT_INTEREST * 2, quality: 0.5 },
   { key: "i2_q0", name: "Interesse ×2 · ohne Qualität", interest: DEFAULT_INTEREST * 2, quality: 0 },
   { key: "i1_q05", name: "App jetzt: Interesse · Qualität halb", interest: DEFAULT_INTEREST, quality: 0.5 },
+  { key: "v1", name: "+ 1 Interesse nach Bewertung", ...APP, extra: { interestByRating: true } },
+  { key: "v2", name: "+ 2 Ähnlichkeit zu Lieblingen", ...APP, extra: { similarityWeight: 2 } },
+  { key: "v2s", name: "+ 2 Ähnlichkeit (stark)", ...APP, extra: { similarityWeight: 5 } },
+  { key: "v3", name: "+ 3 seltene Stichworte", ...APP, extra: { rareKeywords: true } },
+  { key: "v4", name: "+ 4 Herkunft, Sprache, Studio", ...APP, extra: { originWeight: 0.4 } },
+  { key: "v5", name: "+ 5 Qualität je Genre", ...APP, extra: { genreQuality: true } },
+  { key: "v6", name: "+ 6 Genre-Kombinationen", ...APP, extra: { genrePairWeight: 0.6 } },
+  { key: "vall", name: "Alle Verbesserungen 1–6", ...APP, extra: ALL_EXTRAS },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 
@@ -32,9 +44,11 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Runde 1–5: ohne / Haiku / Haiku nur KI (alle 38 %). Rücktest: Interesse ~75 %, KI bringt nichts dazu.
 // Runde 6–?: Interesse ×1 / ×2 / +Haiku → Haiku klar schwächer (55 %).
 // Jetzt: App-Einstellung vs. Interesse ×2 vs. ganz ohne Qualität
-export const DUEL_SOURCES: SourceDef[] = [byKey("i1_q05"), byKey("interesse_stark"), byKey("i2_q0")];
+// Runde 1–5: ohne / Haiku / Haiku nur KI (alle 38 %). Rücktest: Interesse ~75 %, KI bringt nichts dazu.
+// Danach: App-Einstellung vs. Interesse ×2 vs. ohne Qualität. Jetzt: App vs. alle Verbesserungen vs. Ähnlichkeit
+export const DUEL_SOURCES: SourceDef[] = [byKey("i1_q05"), byKey("vall"), byKey("v2")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
-export const EVAL_SOURCES: SourceDef[] = ["ohne", "interesse", "i15", "interesse_stark", "i3", "i1_q05", "i2_q05", "i2_q0", "interesse_haiku"].map(byKey);
+export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "v1", "v2", "v2s", "v3", "v4", "v5", "v6", "vall", "interesse_stark"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
 export const sourceName = (k: string) => ALL_SOURCES.find((s) => s.key === k)?.name ?? k;
 
@@ -45,8 +59,8 @@ export function rankWith(src: SourceDef, rated: RatedTitle[], catalog: Title[], 
   const c = map ? withAi(cands, map) : cands;
   const cat = map ? withAi(catalog, map) : catalog;
   const { opts } = tuneOptions(r, src.onlyAi ? { skipKinds: NON_AI_KINDS } : {});
-  const o = { ...opts, interestWeight: src.interest ?? 0, qualityWeight: src.quality ?? opts.qualityWeight };
-  return recommend(c, buildProfile(r, o, src.interest ? cat : undefined), o);
+  const o: ScoreOptions = { ...opts, interestWeight: src.interest ?? 0, qualityWeight: src.quality ?? opts.qualityWeight, ...src.extra };
+  return recommend(c, buildProfile(r, o, src.interest || src.extra ? cat : undefined), o);
 }
 
 // Nachträglicher Test: Wie oft stuft die Variante einen Film, der dir gepasst hat,

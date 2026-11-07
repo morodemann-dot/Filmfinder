@@ -169,12 +169,18 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const notInDeck = (t: Title) => !inDeck.has(t.id);
 
   // 2) "Weil du X mochtest" – zwei Lieblingsfilme, die täglich wechseln
+  // Lieblingsfilme zuerst, dann die 8–10er
   const favorites = rated
-    .filter((r): r is RatedTitle => r.status === "gesehen" && (r.rating ?? 0) >= 8 && (r.release_year ?? 0) >= SUGGEST_FROM_YEAR)
-    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || a.id - b.id);
+    .filter((r): r is RatedTitle => r.status === "gesehen" && (!!r.favorite || (r.rating ?? 0) >= 8) && (r.release_year ?? 0) >= SUGGEST_FROM_YEAR)
+    .sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || (b.rating ?? 0) - (a.rating ?? 0) || a.id - b.id);
   const day = dayNumber();
+  // eine Reihe zu einem Lieblingsfilm (falls vorhanden), eine zu einem gut bewerteten – täglich andere
+  const loved = favorites.filter((f) => f.favorite);
   const anchors = favorites.length
-    ? [...new Set([favorites[(day * 7) % favorites.length], favorites[(day * 7 + Math.floor(favorites.length / 2)) % favorites.length]])]
+    ? [...new Set([
+        loved.length ? loved[day % loved.length] : favorites[(day * 7) % favorites.length],
+        favorites[(day * 7 + Math.floor(favorites.length / 2)) % favorites.length],
+      ])]
     : [];
   const becauseRows = anchors.map((a) => ({
     anchor: a,
@@ -223,7 +229,8 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
       </div>
 
       {becauseRows.map(({ anchor, items }) => (
-        <Row key={anchor.id} title={`Weil du „${anchor.title}“ mochtest`} sub={`${anchor.rating}/10`} items={items} />
+        <Row key={anchor.id} title={`Weil du „${anchor.title}“ ${anchor.favorite ? "liebst" : "mochtest"}`}
+          sub={anchor.favorite ? "♥ Lieblingsfilm" : `${anchor.rating}/10`} items={items} />
       ))}
       <Row title="Leute mit ähnlichem Geschmack mochten" sub="aus der App, anonym" items={neighborRow} />
       <Row title="Geheimtipps für dich" sub="wenig bekannt, passt aber" items={gems.map((r) => ({ t: r.title, caption: shortReason(r) }))} />

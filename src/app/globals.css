@@ -489,3 +489,9 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .detail-toggle input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; margin-top: 1px; }
 .q-scroll { max-height: min(46vh, 380px); overflow-y: auto; overscroll-behavior: contain; }
 .q-chip.neg.on { background: var(--danger, #ff453a); border-color: var(--danger, #ff453a); color: #fff; }
+
+/* Lieblingsfilm */
+.fav-toggle { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line, rgba(255,255,255,0.12)); background: transparent; color: var(--text);
+  border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 0.9rem; cursor: pointer; }
+.fav-toggle span { color: #ff375f; font-size: 1.05rem; }
+.fav-toggle.on { border-color: #ff375f; background: color-mix(in srgb, #ff375f 14%, transparent); font-weight: 600; }

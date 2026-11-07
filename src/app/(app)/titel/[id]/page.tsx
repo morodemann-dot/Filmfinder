@@ -17,7 +17,7 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
     supabase.from("titles").select("*").eq("id", titleId).maybeSingle(),
     supabase
       .from("user_title_feedback")
-      .select("status,rating")
+      .select("*") // inkl. favorite, falls Ergänzung 16 schon da ist
       .eq("user_id", user!.id)
       .eq("title_id", titleId)
       .maybeSingle(),
@@ -161,6 +161,7 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
           titleId={title.id}
           initialStatus={(fb?.status as Status) ?? null}
           initialRating={fb?.rating ?? null}
+          initialFavorite={!!(fb as { favorite?: boolean } | null)?.favorite}
           title={title.title}
           info={{ directors: title.directors, cast_names: title.cast_names?.slice(0, 3), genres: title.genres, wd_genres: title.wd_genres,
             composers: title.composers?.slice(0, 1), cinematographers: title.cinematographers?.slice(0, 1), based_on: title.based_on,

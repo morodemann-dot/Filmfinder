@@ -14,11 +14,12 @@ import { aspectStrength } from "./aspects";
 import { AI_SCALES, type AiScale } from "./aiFeatures";
 
 // reason: Grund bei "Kein Interesse"; aspects: was gefallen/gestört hat ("+regie:Nolan", "-aspekt:langatmig")
-export type RatedTitle = Title & { rating: number | null; status: string; reason?: string | null; aspects?: string[] };
+export type RatedTitle = Title & { rating: number | null; status: string; reason?: string | null; aspects?: string[]; favorite?: boolean };
 
 export type FeatureKind =
   | "genre" | "regie" | "besetzung" | "reihe" | "jahrzehnt" | "preise"
   | "subgenre" | "thema" | "drehbuch" | "kamera" | "musik" | "vorlage" | "stil" | "budget"
+  | "land" | "sprache" | "studio" | "genrepaar" // nur aktiv, wenn per Schalter eingeschaltet (Gewicht sonst 0)
   | AiKind;
 
 // KI-Merkmale (Stufe 2): jede Skala ist eine eigene Merkmalsart, damit der Messtest sie einzeln prüfen kann
@@ -43,6 +44,7 @@ const KIND_WEIGHT: Record<FeatureKind, number> = {
   vorlage: 0.3, // basiert auf Buch / Comic / wahrer Person …
   stil: 0.4, // Schwarzweiß
   budget: 0.4, // Großproduktion vs. kleiner Film
+  land: 0, sprache: 0, studio: 0, genrepaar: 0, // Schalter: originWeight / genrePairWeight
   ...aiRecord(() => 0.5),
 };
 
@@ -60,6 +62,7 @@ export const KIND_NAMES: Record<FeatureKind, string> = {
   genre: "Genres", regie: "Regie", besetzung: "Besetzung", reihe: "Filmreihen", jahrzehnt: "Jahrzehnt",
   preise: "Preise & Nominierungen", subgenre: "Feine Genres", thema: "Themen & Stichworte", drehbuch: "Drehbuch",
   kamera: "Kamera", musik: "Filmmusik", vorlage: "Vorlage (Buch, Comic …)", stil: "Schwarzweiß", budget: "Budget",
+  land: "Herkunftsland", sprache: "Originalsprache", studio: "Studio", genrepaar: "Genre-Kombination",
   ...aiRecord((k) =>
     k === "ki_stimmung" ? "KI: Grundstimmung" : k === "ki_humorart" ? "KI: Humorart" : k === "ki_struktur" ? "KI: Erzählweise"
       : `KI: ${AI_SCALES[k.slice(3) as AiScale].name}`),
@@ -80,12 +83,19 @@ export const SUGGEST_FROM_YEAR = 1980;
 
 export type ScoreOptions = {
   interestWeight?: number; // wie stark zählt, welche ART von Filmen du schaust (0 = aus)
+  // --- Schalter für Verbesserungen (werden im nachträglichen Test verglichen) ---
+  interestByRating?: boolean; // 1) Interesse nach Bewertung gewichten (9–10 stark, bis 5 dagegen)
+  similarityWeight?: number; // 2) Ähnlichkeit zu Lieblingsfilmen / 9–10ern (und Abstand zu Flops)
+  rareKeywords?: boolean; // 3) seltene Stichworte/feine Genres zählen mehr als häufige
+  originWeight?: number; // 4) Herkunftsland, Originalsprache, Studio als Merkmal
+  genreQuality?: boolean; // 5) Qualität im Vergleich zum Genre (Horror mit 7,0 ist stark)
+  genrePairWeight?: number; // 6) Genre-Kombinationen (Sci-Fi + Drama ≠ Sci-Fi + Action)
   qualityWeight?: number; // 1 = so stark, wie es zu deinen Bewertungen passt; 0 = ignorieren
   tasteWeight?: number; // wie stark dein persönlicher Geschmack zählt (wird per Messtest gewählt)
   shrink?: number; // Vorsicht bei wenigen Belegen (mehr = vorsichtiger)
   skipKinds?: FeatureKind[]; // Merkmalsarten weglassen (nur für den Messtest)
 };
-export const DEFAULT_OPTIONS: Required<Omit<ScoreOptions, "skipKinds" | "interestWeight">> = { qualityWeight: 1, tasteWeight: 1, shrink: 2 };
+export const DEFAULT_OPTIONS: { qualityWeight: number; tasteWeight: number; shrink: number } = { qualityWeight: 1, tasteWeight: 1, shrink: 2 };
 export const DEFAULT_INTEREST = 1;
 
 // Einstellung für Vorschläge unbekannter Filme (Filmfinder) – festgelegt per Modell-Duell
@@ -120,6 +130,12 @@ export function featuresOf(t: Title): Feature[] {
     const kind = b.includes(":") ? b.split(":")[0] : null; // "Buch", "Comic", "wahre Person" …
     if (kind) f.push({ key: `vorlage:${kind}`, kind: "vorlage", label: `nach ${kind === "wahre Person" ? "wahrer Geschichte" : kind}` });
   }
+  for (const c of (t.countries ?? []).slice(0, 2)) f.push({ key: `land:${c}`, kind: "land", label: c });
+  if (t.original_language) f.push({ key: `sprache:${t.original_language}`, kind: "sprache", label: t.original_language.toUpperCase() });
+  for (const st of (t.studios ?? []).slice(0, 2)) f.push({ key: `studio:${st}`, kind: "studio", label: st });
+  const gs = (t.genres ?? []).slice(0, 3).slice().sort();
+  for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++)
+    f.push({ key: `genrepaar:${gs[i]}+${gs[j]}`, kind: "genrepaar", label: `${gs[i]} + ${gs[j]}` });
   if (t.black_and_white) f.push({ key: "stil:sw", kind: "stil", label: "Schwarzweiß-Filme" });
   if (t.certification_de === "16" || t.certification_de === "18") f.push({ key: `stil:fsk${t.certification_de}`, kind: "stil", label: `FSK ${t.certification_de}` });
   if ((t.nominations?.length ?? 0) >= 5) f.push({ key: "preise:nominiert", kind: "preise", label: "Viel nominierte Filme" });
@@ -191,7 +207,18 @@ function reasonWeight(reason: string | null | undefined, f: Feature) {
   }
 }
 
-export function buildInterest(rated: RatedTitle[], catalog: Title[]) {
+// Wie stark ein gesehener Film fürs Interesse zählt (Schalter interestByRating) – Lieblingsfilme immer stark
+function interestWeightOf(r: RatedTitle, byRating: boolean) {
+  let w = r.status === "gesehen" ? 1 : r.status === "merkliste" ? 0.5 : r.status === "nicht_interessiert" ? -0.7 : 0;
+  if (byRating && r.status === "gesehen" && r.rating) {
+    const x = r.rating;
+    w = x >= 9 ? 1.6 : x >= 8 ? 1.3 : x >= 7 ? 1 : x >= 6 ? 0.6 : x >= 5 ? 0.25 : -0.4;
+  }
+  if (r.favorite) w = Math.max(w, 2);
+  return w;
+}
+
+export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: ScoreOptions = {}) {
   const catCount = new Map<string, number>();
   for (const t of catalog) for (const f of new Set(featuresOf(t).map((x) => x.key))) catCount.set(f, (catCount.get(f) ?? 0) + 1);
   // KI-Merkmale gibt es nur für einen Teil der Filme → dort nur mit eingeschätzten Filmen vergleichen
@@ -199,7 +226,7 @@ export function buildInterest(rated: RatedTitle[], catalog: Title[]) {
   const mine = new Map<string, { f: Feature; n: number }>();
   let total = 0, totalAi = 0;
   for (const r of rated) {
-    const w = r.status === "gesehen" ? 1 : r.status === "merkliste" ? 0.5 : r.status === "nicht_interessiert" ? -0.7 : 0;
+    const w = interestWeightOf(r, !!opts.interestByRating);
     if (!w) continue;
     if (w > 0) { total += w; if (r.ai) totalAi += w; }
     const seen = new Set<string>();
@@ -207,7 +234,7 @@ export function buildInterest(rated: RatedTitle[], catalog: Title[]) {
       if (seen.has(f.key)) continue;
       seen.add(f.key);
       const a = mine.get(f.key) ?? { f, n: 0 };
-      a.n += w < 0 ? reasonWeight(r.reason, f) : w;
+      a.n += w < 0 ? (r.status === "nicht_interessiert" ? reasonWeight(r.reason, f) : w) : w;
       mine.set(f.key, a);
     }
   }
@@ -278,6 +305,7 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     if (r.status === "gesehen" && r.rating) add(r, r.rating - expected(r), 1, r.rating);
     else if (r.status === "nicht_interessiert") add(r, -2, 0.5, null); // schwaches Minus
     else if (r.status === "merkliste") add(r, 1, 0.3, null); // sehr schwaches Plus
+    if (r.favorite) add(r, 2, 0.8, null); // Lieblingsfilm: zusätzliches, deutliches Plus
   }
 
   const prefs = new Map<string, Preference>();
@@ -291,8 +319,35 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
       avgScore: a.n ? a.sumR / a.n : null,
     });
   }
-  const interest = catalog?.length ? buildInterest(rated, catalog) : null;
-  return { prefs, interest, aspectCounts, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
+  const interest = catalog?.length ? buildInterest(rated, catalog, opts) : null;
+
+  // 2) Ähnlichkeit: Anker = Lieblingsfilme + 9–10er (zu wenige? dann auch 8er); Gegen-Anker = Filme bis 4
+  let anchorsPos: { t: Title; v: Map<string, number>; fav: boolean }[] = [];
+  let anchorsNeg: Map<string, number>[] = [];
+  if (opts.similarityWeight) {
+    let pos = rated.filter((r) => r.favorite || (r.status === "gesehen" && (r.rating ?? 0) >= 9));
+    if (pos.length < 8) pos = rated.filter((r) => r.favorite || (r.status === "gesehen" && (r.rating ?? 0) >= 8));
+    anchorsPos = pos.slice(0, 120).map((t) => ({ t, v: simVector(t), fav: !!t.favorite }));
+    anchorsNeg = rated.filter((r) => r.status === "gesehen" && r.rating != null && r.rating <= 4).slice(0, 80).map(simVector);
+  }
+
+  // 5) Qualität je Genre: Durchschnitt pro Hauptgenre im Katalog (vorsichtig gemittelt)
+  const genreQ = new Map<string, number>();
+  if (opts.genreQuality && catalog?.length) {
+    const sums = new Map<string, { s: number; n: number }>();
+    let all = 0, n = 0;
+    for (const t of catalog) {
+      const q = qualityOf(t), g = t.genres?.[0];
+      if (q == null || !g) continue;
+      all += q; n++;
+      const x = sums.get(g) ?? { s: 0, n: 0 };
+      x.s += q; x.n++;
+      sums.set(g, x);
+    }
+    const avg = n ? all / n : 0;
+    for (const [g, x] of sums) genreQ.set(g, ((x.s / x.n) - avg) * (x.n / (x.n + 30)));
+  }
+  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, genreQ, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -304,6 +359,10 @@ const KIND_LABEL: Record<FeatureKind, string> = {
   vorlage: "Vorlage",
   stil: "",
   budget: "",
+  land: "Aus",
+  sprache: "Sprache",
+  studio: "Studio",
+  genrepaar: "Genre",
   ...aiRecord(() => ""),
   regie: "Regie",
   besetzung: "Mit",
@@ -325,6 +384,7 @@ function reasonText(p: Preference) {
 const INTEREST_WEIGHT: Record<FeatureKind, number> = {
   genre: 1.0, subgenre: 0.7, thema: 0.5, jahrzehnt: 0.4, vorlage: 0.3, budget: 0.3, stil: 0.3, preise: 0.2,
   regie: 0.35, besetzung: 0.15, reihe: 0.4, drehbuch: 0.15, kamera: 0.1, musik: 0.1,
+  land: 0, sprache: 0, studio: 0, genrepaar: 0,
   ...aiRecord(() => 0.4),
 };
 
@@ -373,8 +433,43 @@ function interestText(it: Interest) {
   return `Typisch für dich – ${head} (${Math.round(it.share * 100)} % deiner Filme, im Katalog ${Math.round(it.catShare * 100)} %)`;
 }
 
+// ---------------- Ähnlichkeit zwischen zwei Filmen ----------------
+const SIM_WEIGHT: Partial<Record<FeatureKind, number>> = {
+  genre: 0.5, subgenre: 1, thema: 0.8, regie: 1.2, drehbuch: 0.8, vorlage: 0.3, reihe: 1.5, besetzung: 0.4,
+  jahrzehnt: 0.2, kamera: 0.3, musik: 0.3, genrepaar: 0.6,
+};
+export function simVector(t: Title) {
+  const m = new Map<string, number>();
+  for (const f of featuresOf(t)) {
+    const x = SIM_WEIGHT[f.kind] ?? (f.kind.startsWith("ki_") ? 0.3 : 0);
+    if (x) m.set(f.key, x);
+  }
+  return m;
+}
+// 0–1: gewichtete Überschneidung der Merkmale
+export function similarity(a: Map<string, number>, b: Map<string, number>) {
+  let shared = 0, sa = 0, sb = 0;
+  for (const [k, x] of a) { sa += x; if (b.has(k)) shared += x; }
+  for (const x of b.values()) sb += x;
+  return sa && sb ? shared / Math.sqrt(sa * sb) : 0;
+}
+
+// Gewicht einer Merkmalsart – die per Schalter zuschaltbaren Arten (Herkunft, Studio, Genre-Kombi) sonst 0
+function kindWeights(opts: ScoreOptions) {
+  const extra = (k: FeatureKind) =>
+    k === "land" || k === "sprache" || k === "studio" ? opts.originWeight ?? 0 : k === "genrepaar" ? opts.genrePairWeight ?? 0 : null;
+  return {
+    taste: (k: FeatureKind) => extra(k) ?? KIND_WEIGHT[k],
+    interest: (k: FeatureKind) => extra(k) ?? INTEREST_WEIGHT[k],
+  };
+}
+// 3) Seltenheit: Merkmal, das nur wenige Katalogfilme haben, zählt mehr (z. B. "time loop" mehr als "based on novel")
+const rarity = (catShare: number) => Math.max(0.3, Math.min(2, -Math.log(Math.max(catShare, 1e-4)) / Math.log(40)));
+
 export function recommend(candidates: Title[], profile: Profile, opts: ScoreOptions = {}): Recommendation[] {
   const { prefs } = profile;
+  const W = kindWeights(opts);
+  const sw = opts.similarityWeight ?? 0;
   const iw = opts.interestWeight ?? DEFAULT_INTEREST;
   const qw = (opts.qualityWeight ?? DEFAULT_OPTIONS.qualityWeight) * profile.qualitySlope;
   const tw = opts.tasteWeight ?? DEFAULT_OPTIONS.tasteWeight;
@@ -397,10 +492,11 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
     const contrib: { p: Preference; c: number }[] = [];
     for (const [kind, ps] of byKind) {
       const avg = ps.reduce((s, p) => s + p.pref, 0) / ps.length;
-      score += tw * KIND_WEIGHT[kind] * avg;
-      for (const p of ps) contrib.push({ p, c: (tw * KIND_WEIGHT[kind] * p.pref) / ps.length });
+      score += tw * W.taste(kind) * avg;
+      for (const p of ps) contrib.push({ p, c: (tw * W.taste(kind) * p.pref) / ps.length });
     }
-    const q = qualityOf(t);
+    const q0 = qualityOf(t);
+    const q = q0 == null ? null : q0 - (opts.genreQuality ? profile.genreQ.get(t.genres?.[0] ?? "") ?? 0 : 0);
     if (q != null) score += qw * (q - profile.qMean);
 
     // Allgemeine Eindrücke aus den kurzen Fragen (vorsichtig, höchstens ±0,6)
@@ -415,10 +511,27 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
         if (it) byKindI.set(f.kind, [...(byKindI.get(f.kind) ?? []), it]);
       }
       for (const [kind, its] of byKindI) {
-        score += iw * INTEREST_WEIGHT[kind] * (its.reduce((s, x) => s + x.lift, 0) / its.length);
+        const rare = opts.rareKeywords && (kind === "thema" || kind === "subgenre");
+        const ws = its.map((x) => (rare ? rarity(x.catShare) : 1));
+        const mean = its.reduce((s, x, i) => s + ws[i] * x.lift, 0) / (rare ? ws.reduce((a, b) => a + b, 0) / ws.length * its.length : its.length);
+        score += iw * W.interest(kind) * mean;
         for (const it of its)
-          if (INTEREST_REASON_KINDS.has(kind) && it.lift > 0.4 && it.mine >= 3 && (!topInterest || it.lift * INTEREST_WEIGHT[kind] > topInterest.lift * INTEREST_WEIGHT[topInterest.kind])) topInterest = it;
+          if (INTEREST_REASON_KINDS.has(kind) && it.lift > 0.4 && it.mine >= 3 && (!topInterest || it.lift * W.interest(kind) > topInterest.lift * W.interest(topInterest.kind))) topInterest = it;
       }
+    }
+
+    // Ähnlichkeit zu deinen Lieblingsfilmen (und Abstand zu Flops)
+    let similarTo: { t: Title; s: number; fav: boolean } | null = null;
+    if (sw && profile.anchorsPos.length) {
+      const v = simVector(t);
+      for (const a of profile.anchorsPos) {
+        if (a.t.id === t.id) continue;
+        const s = similarity(v, a.v);
+        if (!similarTo || s > similarTo.s) similarTo = { t: a.t, s, fav: a.fav };
+      }
+      let neg = 0;
+      for (const a of profile.anchorsNeg) neg = Math.max(neg, similarity(v, a));
+      score += sw * ((similarTo?.s ?? 0) - 0.6 * neg);
     }
     // Ganz leichter Bonus für bekannte Filme, nur als Gleichstand-Entscheider
     score += Math.log10(1 + (t.popularity ?? 0)) * 0.02;
@@ -429,6 +542,8 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
       .slice(0, 3)
       .map((x) => reasonText(x.p));
     if (topInterest && reasons.length < 3) reasons.unshift(interestText(topInterest));
+    if (similarTo && similarTo.s >= 0.35 && reasons.length < 3)
+      reasons.unshift(`Ähnlich wie „${similarTo.t.title}“${similarTo.fav ? " – einer deiner Lieblingsfilme" : ""}`);
     if (q != null && q >= 0.8 && qw >= 0.3 && reasons.length < 3)
       reasons.push(`Allgemein sehr gut bewertet (TMDB ${t.vote_average!.toLocaleString("de-DE", { maximumFractionDigits: 1 })})`);
     out.push({ title: t, score, reasons, coverage: known / feats.length });
@@ -500,6 +615,7 @@ export function topInterests(interest: Map<string, Interest> | null, count = 8) 
   if (!interest) return [];
   return [...interest.values()]
     .filter((x) => INTEREST_REASON_KINDS.has(x.kind) && x.kind !== "besetzung" && x.mine >= 4 && x.lift > 0.3)
+    .filter((x) => INTEREST_WEIGHT[x.kind] > 0)
     .sort((a, b) => b.lift * INTEREST_WEIGHT[b.kind] - a.lift * INTEREST_WEIGHT[a.kind])
     .slice(0, count);
 }

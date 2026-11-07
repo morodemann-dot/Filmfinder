@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveAspects, saveFeedbackQuiet, setFeedback } from "@/app/actions";
+import { saveAspects, saveFeedbackQuiet, setFavorite, setFeedback } from "@/app/actions";
 import Score from "./Score";
 import { AspectSheet, ReasonSheet } from "./QuestionSheet";
 import { shouldAskAspects, type AspectInfo, type ReasonKey } from "@/lib/aspects";
@@ -14,13 +14,22 @@ export default function FeedbackControls({
   initialRating,
   title,
   info,
+  initialFavorite = false,
 }: {
   titleId: number;
   initialStatus: Status | null;
   initialRating: number | null;
   title?: string;
   info?: AspectInfo;
+  initialFavorite?: boolean;
 }) {
+  const [fav, setFav] = useState(initialFavorite);
+  function toggleFav() {
+    const next = !fav;
+    setFav(next);
+    if (next && status !== "gesehen") setStatus("gesehen");
+    setFavorite(titleId, next).catch((e) => { setFav(!next); setError(e instanceof Error ? e.message : "Fehler"); });
+  }
   const [question, setQuestion] = useState<"reason" | number | null>(null);
   const [status, setStatus] = useState<Status | null>(initialStatus);
   const [rating, setRating] = useState<number | null>(initialRating);
@@ -54,6 +63,9 @@ export default function FeedbackControls({
     <div className="panel">
       <div className="eyebrow" style={{ marginBottom: 10 }}>Deine Bewertung</div>
       <Score value={status === "gesehen" ? rating : null} onChange={(r) => save("gesehen", r)} hint="Gesehen? Tippe eine Zahl an." />
+      <button className={`fav-toggle ${fav ? "on" : ""}`} onClick={toggleFav} aria-pressed={fav} style={{ marginTop: 12 }}>
+        <span aria-hidden>{fav ? "♥" : "♡"}</span> {fav ? "Einer meiner Lieblingsfilme" : "Als Lieblingsfilm markieren"}
+      </button>
       <div className="row" style={{ marginTop: 14 }}>
         <button className={`btn ${status === "gesehen" && !rating ? "active" : ""}`} onClick={() => toggle("gesehen")}>
           Gesehen

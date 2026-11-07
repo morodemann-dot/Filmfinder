@@ -6,11 +6,11 @@ import type { Title } from "./types";
 import type { AiFeatures } from "./aiFeatures";
 
 const COLS =
-  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds,keywords,wd_genres,main_subjects,writers,cinematographers,composers,based_on,vote_average,vote_count,certification_de,festivals,set_in_period,narrative_locations";
+  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds,keywords,wd_genres,main_subjects,writers,cinematographers,composers,based_on,vote_average,vote_count,certification_de,festivals,set_in_period,narrative_locations,countries,original_language";
 // Ergänzung 12 (Wikidata) – fehlt sie noch, läuft alles mit den Grundspalten weiter
 const COLS_EXTRA = COLS + ",black_and_white,budget_usd,nominations";
 
-type Row = { status: string; rating: number | null; reason?: string | null; aspects?: string[]; titles: Title | null };
+type Row = { status: string; rating: number | null; reason?: string | null; aspects?: string[]; favorite?: boolean; titles: Title | null };
 
 // Zwischenspeicher für den Katalog: Er ist für alle Nutzer gleich und ändert sich selten.
 // So wird er nicht bei jedem Seitenaufruf komplett neu geladen (wichtig bei Tausenden Filmen).
@@ -35,8 +35,10 @@ async function load(supabase: SupabaseClient, userId: string, withCatalog: boole
   if (!withCatalog) {
     return Promise.all([
       fetchAll<Row>((from, to) =>
-        supabase.from("user_title_feedback").select(`status,rating,reason,aspects,titles(${cols})`).eq("user_id", userId).range(from, to),
+        supabase.from("user_title_feedback").select(`status,rating,reason,aspects,favorite,titles(${cols})`).eq("user_id", userId).range(from, to),
       ).catch(() => fetchAll<Row>((from, to) =>
+        supabase.from("user_title_feedback").select(`status,rating,reason,aspects,titles(${cols})`).eq("user_id", userId).range(from, to),
+      )).catch(() => fetchAll<Row>((from, to) =>
         supabase.from("user_title_feedback").select(`status,rating,titles(${cols})`).eq("user_id", userId).range(from, to),
       )),
       Promise.resolve([] as Title[]),
@@ -44,9 +46,11 @@ async function load(supabase: SupabaseClient, userId: string, withCatalog: boole
   }
   // Mit Katalog: deine Einträge nur als IDs laden und mit dem (zwischengespeicherten) Katalog verbinden
   const [fb, catalog] = await Promise.all([
-    fetchAll<{ title_id: number; status: string; rating: number | null; reason?: string | null; aspects?: string[] }>((from, to) =>
+    fetchAll<{ title_id: number; status: string; rating: number | null; reason?: string | null; aspects?: string[]; favorite?: boolean }>((from, to) =>
+      supabase.from("user_title_feedback").select("title_id,status,rating,reason,aspects,favorite").eq("user_id", userId).range(from, to),
+    ).catch(() => fetchAll<{ title_id: number; status: string; rating: number | null; reason?: string | null; aspects?: string[] }>((from, to) =>
       supabase.from("user_title_feedback").select("title_id,status,rating,reason,aspects").eq("user_id", userId).range(from, to),
-    ).catch(() => fetchAll<{ title_id: number; status: string; rating: number | null }>((from, to) =>
+    )).catch(() => fetchAll<{ title_id: number; status: string; rating: number | null }>((from, to) =>
       supabase.from("user_title_feedback").select("title_id,status,rating").eq("user_id", userId).range(from, to),
     )),
     loadCatalog(supabase, cols),
@@ -84,7 +88,7 @@ export async function loadTasteData(supabase: SupabaseClient, userId: string, wi
     load(supabase, userId, withCatalog, COLS),
   );
   let rated: RatedTitle[] = mine.filter((m) => m.titles).map((m) => ({
-    ...m.titles!, rating: m.rating, status: m.status, reason: m.reason ?? null, aspects: m.aspects ?? [],
+    ...m.titles!, rating: m.rating, status: m.status, reason: m.reason ?? null, aspects: m.aspects ?? [], favorite: !!m.favorite,
   }));
   let catalogOut = catalog;
   // KI-Merkmale nur nutzen, wenn mindestens die Hälfte des Katalogs eingeschätzt ist –

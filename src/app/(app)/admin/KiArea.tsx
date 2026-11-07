@@ -174,8 +174,8 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }
       <div className="panel">
         <div className="eyebrow" style={{ marginBottom: 4 }}>3 · Modell-Duell (blind)</div>
         <p className="caption" style={{ marginTop: 0 }}>
-          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1980, die du noch nicht eingeordnet hast: die aktuelle App-Einstellung
-          (Interesse + halbe Qualität), „Interesse ×2“ und „Interesse ×2 ohne Qualität“.
+          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1980, die du noch nicht eingeordnet hast: die aktuelle App-Einstellung,
+          „Alle Verbesserungen 1–6“ und „Ähnlichkeit zu Lieblingen“. Ganz ohne KI.
           Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
           Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
           Diese Antworten fließen <strong>nicht</strong> in dein Geschmacksprofil ein.
@@ -189,12 +189,14 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }
           </>
         ) : (
           <div style={{ display: "grid", gap: 16 }}>
+            {DUEL_MODELS.length > 0 && (
+              <div>
+                <p className="small" style={{ marginTop: 0 }}>Schritt 2: Die KI schätzt die {duel.pool} Testfilme ein.</p>
+                <AiPilot status={statusTest} scope="test" models={DUEL_MODELS} />
+              </div>
+            )}
             <div>
-              <p className="small" style={{ marginTop: 0 }}>Schritt 2: Haiku schätzt die {duel.pool} Testfilme ein.</p>
-              <AiPilot status={statusTest} scope="test" models={DUEL_MODELS} />
-            </div>
-            <div>
-              <p className="small" style={{ marginTop: 0 }}>Schritt 3: Blind bewerten.</p>
+              <p className="small" style={{ marginTop: 0 }}>Blind bewerten:</p>
               {cards.length > 0 ? <DuelDeck cards={cards} /> : (
                 <>
                   <p className="caption">

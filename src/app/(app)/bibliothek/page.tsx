@@ -11,20 +11,22 @@ const TABS: Status[] = ["gesehen", "merkliste", "nicht_interessiert"];
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const sp = await searchParams;
+  const favTab = sp.tab === "lieblinge";
   const tab = (TABS.includes(sp.tab as Status) ? sp.tab : "gesehen") as Status;
 
   const supabase = await createClient();
   const user = await getUser();
   const { data } = await supabase
     .from("user_title_feedback")
-    .select("status,rating,updated_at,titles(id,title,poster_path,release_year,format)")
+    .select("*,titles(id,title,poster_path,release_year,format)") // "*" = inkl. Lieblingsfilm, falls vorhanden
     .eq("user_id", user!.id)
     .order("updated_at", { ascending: false });
 
-  type Row = { status: Status; rating: number | null; titles: Title | null };
+  type Row = { status: Status; rating: number | null; favorite?: boolean; titles: Title | null };
   const rows = (data ?? []) as unknown as Row[];
   const counts = Object.fromEntries(TABS.map((s) => [s, rows.filter((r) => r.status === s).length]));
-  const shown = rows.filter((r) => r.status === tab && r.titles);
+  const favCount = rows.filter((r) => r.favorite).length;
+  const shown = rows.filter((r) => (favTab ? r.favorite : r.status === tab) && r.titles);
 
   const { data: profile, error: profileError } = await supabase.from("profiles").select("display_name,share_together").eq("user_id", user!.id).maybeSingle();
   return (
@@ -34,8 +36,9 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         <Link href="/imdb" className="btn small">IMDb importieren</Link>
       </div>
       <div className="chips">
+        <Link href="/bibliothek?tab=lieblinge" className="chip" aria-current={favTab}>♥ Lieblingsfilme ({favCount})</Link>
         {TABS.map((s) => (
-          <Link key={s} href={`/bibliothek?tab=${s}`} className="chip" aria-current={tab === s}>
+          <Link key={s} href={`/bibliothek?tab=${s}`} className="chip" aria-current={!favTab && tab === s}>
             {STATUS_LABEL[s]} ({counts[s]})
           </Link>
         ))}
@@ -47,7 +50,9 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           ))}
         </div>
       ) : (
-        <div className="empty">Hier ist noch nichts. Leg los unter „Bewerten“.</div>
+        <div className="empty">{favTab
+          ? "Noch keine Lieblingsfilme. Markiere sie auf der Filmseite oder beim Bewerten mit ♥ – unabhängig von den Punkten."
+          : "Hier ist noch nichts. Leg los unter „Bewerten“."}</div>
       )}
       <ProfilePanel name={profile?.display_name ?? ""} share={!!profile?.share_together} ready={!profileError} />
     </>

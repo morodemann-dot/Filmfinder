@@ -86,6 +86,20 @@ export async function saveFeedbackQuiet(titleId: number, status: Status | null, 
   await writeFeedback(titleId, status, rating, reason);
 }
 
+// Lieblingsfilm an/aus. Ein Lieblingsfilm gilt immer als gesehen (Punkte bleiben, wie sie sind).
+export async function setFavorite(titleId: number, on: boolean) {
+  const user = await getUser();
+  if (!user) throw new Error("Nicht angemeldet");
+  const supabase = await createClient();
+  const { data: row } = await supabase.from("user_title_feedback").select("status").eq("user_id", user.id).eq("title_id", titleId).maybeSingle();
+  const { error } = row
+    ? await supabase.from("user_title_feedback")
+        .update({ favorite: on, ...(on && row.status !== "gesehen" ? { status: "gesehen", rating: null } : {}), updated_at: new Date().toISOString() })
+        .eq("user_id", user.id).eq("title_id", titleId)
+    : await supabase.from("user_title_feedback").insert({ user_id: user.id, title_id: titleId, status: "gesehen", favorite: on });
+  if (error) throw new Error("Speichern fehlgeschlagen (wurde die Ergänzung 16 ausgeführt?)");
+}
+
 // Antwort auf "Was hat gefallen / gestört?" speichern (zum bestehenden Eintrag)
 export async function saveAspects(titleId: number, aspects: string[]) {
   const user = await getUser();
