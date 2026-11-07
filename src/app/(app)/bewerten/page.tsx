@@ -1,40 +1,26 @@
-import Link from "next/link";
 import QuickRate from "./QuickRate";
+import RateTabs from "@/components/RateTabs";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { fetchAll } from "@/lib/fetchAll";
-import { rankLikelySeen, type RateCandidate, type SeenTitle } from "@/lib/likelySeen";
+import { loadTasteData } from "@/lib/tasteData";
+import { rankLikelySeen, type RateCandidate } from "@/lib/likelySeen";
 
 // "Schnell bewerten": ein Titel nach dem anderen.
 // Reihenfolge: zuerst Filme, die du wahrscheinlich schon gesehen hast (Reihen, Regie, Besetzung, Bekanntheit).
-
-const COLS = "id,title,poster_path,release_year,format,genres,directors,cast_names,collection_id,collection_name,popularity,wd_genres,composers,cinematographers,based_on,writers,keywords,main_subjects,set_in_period,narrative_locations,runtime_seconds,certification_de";
-
+// Schnell: nutzt den zwischengespeicherten Katalog (statt bei jedem Aufruf alle Filme neu zu laden).
 export default async function RatePage() {
   const supabase = await createClient();
   const user = await getUser();
+  const { rated, catalog } = await loadTasteData(supabase, user!.id);
 
-  const [mine, catalog] = await Promise.all([
-    fetchAll<{ title_id: number; status: string; rating: number | null; titles: SeenTitle | null }>((from, to) =>
-      supabase
-        .from("user_title_feedback")
-        .select("title_id,status,rating,titles(directors,cast_names,collection_id)")
-        .eq("user_id", user!.id)
-        .range(from, to),
-    ),
-    fetchAll<RateCandidate>((from, to) => supabase.from("titles").select(COLS).range(from, to)),
-  ]);
-
-  const done = new Set(mine.map((m) => m.title_id));
-  const seen = mine.filter((m) => m.status === "gesehen" && m.titles).map((m) => m.titles!);
-  const queue = rankLikelySeen(catalog.filter((t) => !done.has(t.id)), seen).slice(0, 150);
+  const done = new Set(rated.map((r) => r.id));
+  const seen = rated.filter((r) => r.status === "gesehen")
+    .map((r) => ({ directors: r.directors ?? null, cast_names: r.cast_names ?? null, collection_id: r.collection_id ?? null }));
+  const queue = rankLikelySeen((catalog as unknown as RateCandidate[]).filter((t) => !done.has(t.id)), seen).slice(0, 150);
 
   return (
     <>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
-        <h1 className="page-title-compact">Schnell bewerten</h1>
-        <Link href="/bewerten/check" className="check-link">⚡ Geschmacks-Check</Link>
-      </div>
-      <QuickRate titles={queue} alreadyDone={done.size} ratedBefore={mine.filter((m) => m.rating != null).length} />
+      <RateTabs active="bewerten" />
+      <QuickRate titles={queue} alreadyDone={done.size} ratedBefore={rated.filter((r) => r.rating != null).length} />
     </>
   );
 }
