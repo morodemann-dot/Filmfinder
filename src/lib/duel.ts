@@ -72,7 +72,8 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Danach: App vs. Interesse ×2 vs. ohne Qualität; dann App vs. alle Verbesserungen vs. Ähnlichkeit (5 Runden).
 // Jetzt (aus dem ganzen Katalog): neue App (alle 1–6) vs. alte App vs. alle ohne Ähnlichkeit
 // Ab Nov. 2026 (Runde mit Duell-Lernen): App mit Duell-Antworten vs. vorherige App vs. alte App
-export const DUEL_SOURCES: SourceDef[] = [byKey("kombi"), byKey("d4"), byKey("vall")];
+// Ab 7. Nov. spät: 1–6 lag live klar hinten (50 %) → ersetzt durch "Negatives schwächer ×0,7" (nachträglich gleichauf, 79 %)
+export const DUEL_SOURCES: SourceDef[] = [byKey("kombi"), byKey("d4"), byKey("n07")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
 // Nov. 2026: Negatives stärker schadet (×1,5 78 %, ×2 75 %, ×3 68 % gegenüber 79 %) → jetzt: schwächer?
 export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "d4", "kombi", "n15", "n07", "n05"].map(byKey);
