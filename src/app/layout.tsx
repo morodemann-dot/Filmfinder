@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./glass.css"; // "Liquid Glass"-Stil – zum Abschalten diese Zeile entfernen
 
 // Schrift: Helvetica Neue (ist auf iPhone und Mac bereits installiert).
 

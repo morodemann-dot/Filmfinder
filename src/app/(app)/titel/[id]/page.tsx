@@ -3,7 +3,7 @@ import Poster from "@/components/Poster";
 import TitleCard from "@/components/TitleCard";
 import FeedbackControls from "@/components/FeedbackControls";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { awardDe, formatRuntime, formatUsd, formatVotes, type Status, type Title } from "@/lib/types";
+import { awardDe, formatRuntime, formatUsd, formatVotes, posterUrl, type Status, type Title } from "@/lib/types";
 
 // Detailseite eines Films oder einer Serie.
 export default async function TitlePage({ params }: { params: Promise<{ id: string }> }) {
@@ -52,6 +52,9 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="detail">
+      {title.poster_path && (
+        <div className="poster-backdrop" aria-hidden style={{ backgroundImage: `url(${posterUrl(title.poster_path, "w342")})` }} />
+      )}
       <Poster path={title.poster_path} title={title.title} size="w500" />
       <div>
         <h1>{title.title}</h1>
