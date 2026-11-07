@@ -13,7 +13,9 @@ import type { Title } from "./types";
 
 export type RatedTitle = Title & { rating: number | null; status: string };
 
-type FeatureKind = "genre" | "regie" | "besetzung" | "reihe" | "jahrzehnt" | "preise";
+type FeatureKind =
+  | "genre" | "regie" | "besetzung" | "reihe" | "jahrzehnt" | "preise"
+  | "subgenre" | "thema" | "drehbuch" | "kamera" | "musik" | "vorlage";
 
 // Wie stark eine Merkmalsart zählt (vorläufig, wie in der Spezifikation vorgesehen)
 const KIND_WEIGHT: Record<FeatureKind, number> = {
@@ -23,7 +25,23 @@ const KIND_WEIGHT: Record<FeatureKind, number> = {
   besetzung: 0.6,
   preise: 0.5,
   jahrzehnt: 0.4,
+  subgenre: 0.6, // feine Genres (Wikidata), z. B. Neo-Noir
+  thema: 0.5, // Stichworte (TMDB) + Hauptthemen (Wikidata)
+  drehbuch: 0.6,
+  kamera: 0.3,
+  musik: 0.3,
+  vorlage: 0.3, // basiert auf Buch / Comic / wahrer Person …
 };
+
+// Zu allgemeine Begriffe zählen nicht (sagen nichts über den Geschmack)
+const GENERIC_SUBGENRES = new Set([
+  "Filmdrama", "Actionfilm", "Abenteuerfilm", "Filmkomödie", "Kriminalfilm", "Thriller", "Horrorfilm",
+  "Science-Fiction-Film", "Fantasyfilm", "spannender Film", "Monumentalfilm", "Liebesfilm", "Animationsfilm",
+]);
+const NOISE_KEYWORDS = new Set([
+  "duringcreditsstinger", "aftercreditsstinger", "woman director", "sequel", "remake", "based on novel or book",
+  "based on comic", "3d", "imax", "live action remake", "shot on imax", "independent film", "male protagonist",
+]);
 const SHRINK = 2; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
 
 type Feature = { key: string; kind: FeatureKind; label: string };
@@ -41,6 +59,16 @@ function featuresOf(t: Title): Feature[] {
   }
   if ((t.oscars?.length ?? 0) + (t.globes?.length ?? 0) > 0)
     f.push({ key: "preise:ja", kind: "preise", label: "Preisgekrönte Filme" });
+  for (const g of t.wd_genres ?? []) if (!GENERIC_SUBGENRES.has(g)) f.push({ key: `subgenre:${g}`, kind: "subgenre", label: g });
+  for (const k of (t.keywords ?? []).slice(0, 15)) if (!NOISE_KEYWORDS.has(k)) f.push({ key: `thema:${k}`, kind: "thema", label: k });
+  for (const m of t.main_subjects ?? []) f.push({ key: `thema:${m}`, kind: "thema", label: m.replace(/^Person: /, "") });
+  for (const w of (t.writers ?? []).slice(0, 3)) f.push({ key: `drehbuch:${w}`, kind: "drehbuch", label: w });
+  for (const c of t.cinematographers ?? []) f.push({ key: `kamera:${c}`, kind: "kamera", label: c });
+  for (const c of t.composers ?? []) f.push({ key: `musik:${c}`, kind: "musik", label: c });
+  for (const b of t.based_on ?? []) {
+    const kind = b.includes(":") ? b.split(":")[0] : null; // "Buch", "Comic", "wahre Person" …
+    if (kind) f.push({ key: `vorlage:${kind}`, kind: "vorlage", label: `nach ${kind === "wahre Person" ? "wahrer Geschichte" : kind}` });
+  }
   return f;
 }
 
@@ -96,6 +124,12 @@ export function buildProfile(rated: RatedTitle[]) {
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
+  subgenre: "Genre",
+  thema: "Thema",
+  drehbuch: "Drehbuch",
+  kamera: "Kamera",
+  musik: "Musik",
+  vorlage: "Vorlage",
   regie: "Regie",
   besetzung: "Mit",
   genre: "Genre",

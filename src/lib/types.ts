@@ -25,6 +25,16 @@ export type Title = {
   imdb_id?: string | null;
   oscars?: string[] | null;
   festivals?: string[] | null;
+  keywords?: string[] | null;
+  writers?: string[] | null;
+  cinematographers?: string[] | null;
+  composers?: string[] | null;
+  certification_de?: string | null;
+  based_on?: string[] | null;
+  wd_genres?: string[] | null;
+  narrative_locations?: string[] | null;
+  set_in_period?: string[] | null;
+  main_subjects?: string[] | null;
   canon?: string[] | null;
   cast_names?: string[] | null;
   globes?: string[] | null;

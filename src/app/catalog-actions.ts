@@ -293,3 +293,28 @@ export async function discardAllCandidates(): Promise<{ discarded: number }> {
   const { count } = await createAdminClient().from("import_candidates").delete({ count: "exact" }).eq("status", "offen");
   return { discarded: count ?? 0 };
 }
+
+// ---------------- Daten anreichern (Wikidata) ----------------
+
+// Holt Wikidata-Infos für bis zu 150 noch nicht geprüfte Filme. Die Seite ruft das so lange auf, bis nichts mehr fehlt.
+export async function enrichWikidataChunk(): Promise<{ done: number; found: number; remaining: number }> {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const { data, error, count } = await admin
+    .from("titles").select("id,tmdb_id", { count: "exact" })
+    .eq("media_type", "movie").is("wikidata_checked_at", null).limit(150);
+  if (error) throw new Error(error.message + " (wurde die Ergänzung 11 im SQL Editor ausgeführt?)");
+  if (!data?.length) return { done: 0, found: 0, remaining: 0 };
+
+  const { wikidataInfo } = await import("@/lib/wikidata");
+  const info = await wikidataInfo(data.map((t) => t.tmdb_id as number));
+  const now = new Date().toISOString();
+  const results = await mapLimit(data, 10, async (t) => {
+    const w = info.get(t.tmdb_id as number);
+    const { error: e } = await admin.from("titles").update({ ...(w ?? {}), wikidata_checked_at: now }).eq("id", t.id);
+    if (e) throw new Error(e.message);
+  });
+  const failed = results.find((r) => r.status === "rejected");
+  if (failed && failed.status === "rejected") throw failed.reason;
+  return { done: data.length, found: info.size, remaining: Math.max(0, (count ?? 0) - data.length) };
+}

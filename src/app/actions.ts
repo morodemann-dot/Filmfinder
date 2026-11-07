@@ -353,8 +353,8 @@ export async function refreshChunk(): Promise<{ done: number; remaining: number 
   if (!isAdmin(user?.email)) throw new Error("Nur für Admins.");
   const admin = createAdminClient();
   const { data, error, count } = await admin
-    .from("titles").select("id,tmdb_id,media_type", { count: "exact" }).is("vote_count", null).limit(60);
-  if (error) throw new Error(error.message + " (wurde die Ergänzung 9 im SQL Editor ausgeführt?)");
+    .from("titles").select("id,tmdb_id,media_type", { count: "exact" }).or("vote_count.is.null,keywords.is.null").limit(60);
+  if (error) throw new Error(error.message + " (wurden die Ergänzungen 9 und 11 im SQL Editor ausgeführt?)");
   if (!data?.length) return { done: 0, remaining: 0 };
 
   const results = await mapLimit(data, 8, (t) => fetchTitleRow(t.media_type as MediaType, t.tmdb_id as number));
@@ -365,7 +365,7 @@ export async function refreshChunk(): Promise<{ done: number; remaining: number 
     const up = await admin.from("titles").upsert(rows, { onConflict: "media_type,tmdb_id" });
     if (up.error) throw new Error(up.error.message);
   }
-  if (failedIds.length) await admin.from("titles").update({ vote_count: 0 }).in("id", failedIds);
+  if (failedIds.length) await admin.from("titles").update({ vote_count: 0, keywords: [] }).in("id", failedIds);
   return { done: data.length, remaining: Math.max(0, (count ?? 0) - data.length) };
 }
 

@@ -39,6 +39,17 @@ create table if not exists public.titles (
   globes            text[] not null default '{}',   -- gewonnene Golden-Globe-Kategorien
   festivals         text[] not null default '{}',   -- Festival-/BAFTA-Gewinne
   canon             text[] not null default '{}',   -- Kritiker-Kanon (Criterion, National Film Registry)
+  keywords          text[],                           -- TMDB-Stichworte (null = noch nicht geladen)
+  writers           text[] not null default '{}',
+  cinematographers  text[] not null default '{}',
+  composers         text[] not null default '{}',
+  certification_de  text,                             -- FSK
+  based_on          text[] not null default '{}',   -- Wikidata: basiert auf …
+  wd_genres         text[] not null default '{}',   -- Wikidata: feinere Genres
+  narrative_locations text[] not null default '{}', -- Wikidata: Handlungsort
+  set_in_period     text[] not null default '{}',   -- Wikidata: Zeit der Handlung
+  main_subjects     text[] not null default '{}',   -- Wikidata: Hauptthema
+  wikidata_checked_at timestamptz,
   kept_at           timestamptz,                      -- beim Aussortieren geprüft & behalten
   metadata_source   text not null default 'tmdb',
   fetched_at        timestamptz not null default now(),  -- TMDB: max. 6 Monate speichern, dann auffrischen

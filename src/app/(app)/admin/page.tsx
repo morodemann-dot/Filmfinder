@@ -5,6 +5,7 @@ import CatalogManager, { type ManageTitle } from "./CatalogManager";
 import Curate from "./Curate";
 import Suspects from "./Suspects";
 import Review from "./Review";
+import DataStatus, { type DataRow } from "./DataStatus";
 import { SettingsPanel } from "./SourceForms";
 import { DEFAULT_SETTINGS, getCatalogSettings } from "@/lib/importer";
 import { clearBlocklist, unblockTitle } from "@/app/actions";
@@ -24,7 +25,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const curate = bereich === "aussortieren";
   const suspects = bereich === "verdacht";
   const review = bereich === "pruefen";
-  const add = !manage && !curate && !suspects && !review;
+  const daten = bereich === "daten";
+  const add = !manage && !curate && !suspects && !review && !daten;
 
   const admin = createAdminClient();
   const [movies, shows, blocked, waiting] = await Promise.all([
@@ -43,6 +45,17 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     ? (await admin.from("excluded_titles").select("media_type,tmdb_id,title,excluded_at").order("excluded_at", { ascending: false }).limit(500)).data ?? []
     : [];
 
+  const dataRows = daten
+    ? await fetchAll<DataRow>((from, to) =>
+        admin.from("titles")
+          .select("vote_count,runtime_seconds,directors,cast_names,writers,cinematographers,composers,keywords,certification_de,collection_id,oscars,globes,festivals,canon,based_on,wd_genres,narrative_locations,set_in_period,main_subjects,wikidata_checked_at")
+          .eq("media_type", "movie").range(from, to),
+      ).catch(() => [] as DataRow[])
+    : [];
+  const tmdbMissing = daten
+    ? (await admin.from("titles").select("id", { count: "exact", head: true }).or("vote_count.is.null,keywords.is.null")).count ?? 0
+    : 0;
+
   const titles = manage
     ? await fetchAll<ManageTitle>((from, to) =>
         admin.from("titles").select("id,tmdb_id,imdb_id,title,original_title,original_language,countries,release_year,media_type,poster_path,created_at,oscars,globes,runtime_seconds").range(from, to),
@@ -58,13 +71,19 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       </p>
 
       <div className="segmented four" style={{ margin: "14px 0 20px", maxWidth: 520 }}>
-        <Link href="/admin" aria-pressed={add || review} className="seg-link">Hinzufügen</Link>
+        <Link href="/admin" aria-pressed={add || review || daten} className="seg-link">Hinzufügen</Link>
         <Link href="/admin?bereich=aussortieren" aria-pressed={curate} className="seg-link">Aussortieren</Link>
         <Link href="/admin?bereich=verdacht" aria-pressed={suspects} className="seg-link">Verdachtsfälle</Link>
         <Link href="/admin?bereich=verwalten" aria-pressed={manage} className="seg-link">Verwalten</Link>
       </div>
 
-      {review ? (
+      {daten ? (
+        <>
+          <Link href="/admin" className="caption">‹ Zurück zu Hinzufügen</Link>
+          <h2 style={{ marginTop: 10 }}>Datenlage</h2>
+          <DataStatus rows={dataRows} tmdbMissing={tmdbMissing} />
+        </>
+      ) : review ? (
         <>
           <Link href="/admin" className="caption">‹ Zurück zu Hinzufügen</Link>
           <h2 style={{ marginTop: 10 }}>Neu prüfen</h2>
@@ -111,6 +130,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               <span className="waiting-cta">Jetzt prüfen ›</span>
             </Link>
           )}
+          <Link href="/admin?bereich=daten" className="waiting-banner" style={{ background: "var(--surface)" }}>
+            <span>Wie gut sind die Filme beschrieben?</span>
+            <span className="waiting-cta">Datenlage ›</span>
+          </Link>
           <SettingsPanel settings={settings} />
           <AddPanel />
         </>

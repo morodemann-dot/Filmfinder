@@ -45,6 +45,7 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
     title.series_status && title.series_status !== "unbekannt" && title.series_status,
     title.original_language?.toUpperCase(),
     formatVotes(title.vote_average, title.vote_count) && `TMDB ${formatVotes(title.vote_average, title.vote_count)}`,
+    title.certification_de && `FSK ${title.certification_de}`,
     title.countries.length > 0 && title.countries.join(", "),
   ].filter(Boolean);
 
@@ -80,6 +81,17 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
             {title.cast_names.slice(0, 6).join(", ")}
           </div>
         )}
+        {[
+          ["Drehbuch", title.writers],
+          ["Kamera", title.cinematographers],
+          ["Musik", title.composers],
+        ].map(([label, list]) =>
+          Array.isArray(list) && list.length > 0 ? (
+            <div key={label as string} className="small" style={{ marginBottom: 4 }}>
+              <span className="muted">{label as string}: </span>{(list as string[]).join(", ")}
+            </div>
+          ) : null,
+        )}
         {title.studios && title.studios.length > 0 && (
           <div className="small" style={{ marginBottom: 10 }}>
             <span className="muted">Studios: </span>
@@ -109,6 +121,24 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
           </div>
         )}
         {title.overview && <p style={{ lineHeight: 1.55 }}>{title.overview}</p>}
+
+        {(title.based_on?.length || title.set_in_period?.length || title.narrative_locations?.length || title.main_subjects?.length) ? (
+          <div className="small" style={{ display: "grid", gap: 4, marginBottom: 14 }}>
+            {(title.based_on?.length ?? 0) > 0 && <div><span className="muted">Basiert auf: </span>{title.based_on!.join(", ")}</div>}
+            {(title.set_in_period?.length ?? 0) > 0 && <div><span className="muted">Spielt: </span>{title.set_in_period!.join(", ")}</div>}
+            {(title.narrative_locations?.length ?? 0) > 0 && <div><span className="muted">Ort: </span>{title.narrative_locations!.join(", ")}</div>}
+            {(title.main_subjects?.length ?? 0) > 0 && <div><span className="muted">Themen: </span>{title.main_subjects!.map((x) => x.replace(/^Person: /, "")).join(", ")}</div>}
+          </div>
+        ) : null}
+        {((title.wd_genres?.length ?? 0) > 0 || (title.keywords?.length ?? 0) > 0) && (
+          <details style={{ marginBottom: 14 }}>
+            <summary className="caption" style={{ cursor: "pointer" }}>Stichworte & feine Genres ›</summary>
+            <div className="tags" style={{ marginTop: 8 }}>
+              {(title.wd_genres ?? []).map((g) => <span key={"g" + g} className="tag">{g}</span>)}
+              {(title.keywords ?? []).slice(0, 25).map((k) => <span key={"k" + k} className="tag" style={{ opacity: 0.8 }}>{k}</span>)}
+            </div>
+          </details>
+        )}
 
         <FeedbackControls
           titleId={title.id}

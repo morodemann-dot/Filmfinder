@@ -101,7 +101,9 @@ type Details = {
   popularity?: number;
   last_episode_to_air?: { runtime?: number | null } | null;
   production_companies?: { id: number; name: string }[];
-  credits?: { crew?: { job: string; name: string }[]; cast?: { name: string; order: number }[] };
+  credits?: { crew?: { job: string; department?: string; name: string }[]; cast?: { name: string; order: number }[] };
+  keywords?: { keywords?: { name: string }[]; results?: { name: string }[] };
+  release_dates?: { results?: { iso_3166_1: string; release_dates: { certification: string }[] }[] };
   created_by?: { name: string }[];
   belongs_to_collection?: { id: number; name: string } | null;
   imdb_id?: string | null;
@@ -137,7 +139,15 @@ export function isShortOnly(a: AwardFilm) {
 
 // Holt die Details zu einem Titel und übersetzt sie in unser Datenformat (M001–M010).
 export async function fetchTitleRow(type: MediaType, id: number) {
-  const d = await tmdb<Details>(`/${type}/${id}`, { append_to_response: "credits" });
+  const d = await tmdb<Details>(`/${type}/${id}`, {
+    append_to_response: type === "movie" ? "credits,keywords,release_dates" : "credits,keywords",
+  });
+  const crew = d.credits?.crew ?? [];
+  const names = (pred: (c: { job: string; department?: string }) => boolean, max = 4) =>
+    [...new Set(crew.filter(pred).map((c) => c.name))].slice(0, max);
+  // FSK-Freigabe für Deutschland (z. B. "12")
+  const fsk =
+    d.release_dates?.results?.find((r) => r.iso_3166_1 === "DE")?.release_dates.map((x) => x.certification).find((c) => c) ?? null;
   const dateStr = type === "movie" ? d.release_date : d.first_air_date;
   const year = dateStr ? Number(dateStr.slice(0, 4)) : null;
 
@@ -177,6 +187,13 @@ export async function fetchTitleRow(type: MediaType, id: number) {
         : (d.created_by ?? []).map((c) => c.name),
     studios: (d.production_companies ?? []).map((c) => c.name),
     cast_names: (d.credits?.cast ?? []).sort((a, b) => a.order - b.order).slice(0, 8).map((c) => c.name),
+    // Weitere Köpfe hinter dem Film
+    writers: names((c) => c.department === "Writing" || ["Screenplay", "Writer", "Story", "Novel"].includes(c.job)),
+    cinematographers: names((c) => c.job === "Director of Photography", 2),
+    composers: names((c) => c.job === "Original Music Composer" || c.job === "Music", 2),
+    // Stichworte (englisch), z. B. "twist ending", "dystopia"
+    keywords: (d.keywords?.keywords ?? d.keywords?.results ?? []).map((k) => k.name).slice(0, 40),
+    certification_de: type === "movie" ? fsk : null,
     collection_id: type === "movie" ? (d.belongs_to_collection?.id ?? null) : null,
     collection_name: type === "movie" ? (d.belongs_to_collection?.name ?? null) : null,
     imdb_id: type === "movie" ? (d.imdb_id ?? null) : null,

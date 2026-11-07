@@ -442,3 +442,15 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 
 .caption.goal { color: var(--accent); font-weight: 500; }
 .caption.goal.done { color: var(--ok); font-weight: 700; }
+
+/* ---------- Datenlage ---------- */
+.cov-grid { display: grid; gap: 12px; }
+@media (min-width: 640px) { .cov-grid { grid-template-columns: 1fr 1fr; column-gap: 24px; } }
+.cov-head { display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px; }
+.cov .progress { margin: 0; height: 6px; }
+.spec-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: 0.85rem; }
+.spec-list li { display: grid; grid-template-columns: 22px 1fr; }
+.spec-list li.da .spec-dot { color: var(--ok); }
+.spec-list li.teil .spec-dot { color: var(--accent); }
+.spec-list li.fehlt { color: var(--muted); }
+.spec-list li.fehlt .spec-dot { color: var(--danger); }

@@ -11,7 +11,7 @@ import { formatRuntime, type Title } from "@/lib/types";
 // Startseite "Filmfinder": erst die Stimmung wählen, dann gibt's einen klaren Tipp + ein paar Alternativen.
 
 const COLS =
-  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds";
+  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds,keywords,wd_genres,main_subjects,writers,cinematographers,composers,based_on";
 
 type SP = { stimmung?: string; zeit?: string; modus?: string };
 
