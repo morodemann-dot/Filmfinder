@@ -117,15 +117,40 @@ export async function rateFilm(model: AiModelKey, film: FilmInput, plot: string 
     plot ? `Handlung (Wikipedia, englisch):\n${plot}` : "Keine ausführliche Handlung verfügbar.",
   ].filter(Boolean).join("\n");
 
+  // Erst mit festem Antwortformular; manche Modelle (z. B. Sonnet 5.5) erlauben diesen Zwang nicht –
+  // dann nur darum bitten und die Antwort notfalls als Text (JSON) auslesen.
+  let j = await callApi(key, model, info, !NO_FORCED_TOOL.has(model)).catch(async (e: Error) => {
+    if (/tool_choice/.test(e.message)) { NO_FORCED_TOOL.add(model); return callApi(key, model, info, false); }
+    throw e;
+  });
+  let features = extractFeatures(j);
+  if (!features) {
+    j = await callApi(key, model, info, false);
+    features = extractFeatures(j);
+  }
+  if (!features) throw new Error("Die KI hat keine Einschätzung geliefert.");
+  return {
+    features,
+    inputTokens: Number(j.usage?.input_tokens ?? 0),
+    outputTokens: Number(j.usage?.output_tokens ?? 0),
+  };
+}
+
+// Modelle, die kein erzwungenes Antwortformular erlauben (wird beim ersten Versuch gelernt)
+const NO_FORCED_TOOL = new Set<AiModelKey>();
+
+type ApiResponse = { content?: { type: string; input?: Record<string, unknown>; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } };
+
+async function callApi(key: string, model: AiModelKey, info: string, forceTool: boolean): Promise<ApiResponse> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
       model: AI_MODELS[model].id,
-      max_tokens: 800,
-      system: SYSTEM,
+      max_tokens: forceTool ? 800 : 2500,
+      system: forceTool ? SYSTEM : SYSTEM + `\n\nAntworte ausschließlich, indem du das Werkzeug "${TOOL.name}" genau einmal aufrufst.`,
       tools: [TOOL],
-      tool_choice: { type: "tool", name: TOOL.name },
+      tool_choice: forceTool ? { type: "tool", name: TOOL.name } : { type: "auto" },
       messages: [{ role: "user", content: info }],
     }),
     cache: "no-store",
@@ -140,13 +165,17 @@ export async function rateFilm(model: AiModelKey, film: FilmInput, plot: string 
     if (res.status === 400 && /credit/i.test(msg)) throw new Error("Das Guthaben bei Anthropic ist aufgebraucht.");
     throw new Error(`KI-Fehler ${res.status}: ${msg}`);
   }
-  const block = (j?.content ?? []).find((c: { type: string }) => c.type === "tool_use");
-  if (!block) throw new Error("Die KI hat keine Einschätzung geliefert.");
-  return {
-    features: clean(block.input ?? {}),
-    inputTokens: Number(j.usage?.input_tokens ?? 0),
-    outputTokens: Number(j.usage?.output_tokens ?? 0),
-  };
+  return j as ApiResponse;
+}
+
+// Einschätzung aus der Antwort holen: Werkzeug-Aufruf, sonst JSON im Text
+function extractFeatures(j: ApiResponse): AiFeatures | null {
+  const tool = (j.content ?? []).find((c) => c.type === "tool_use");
+  if (tool?.input) return clean(tool.input);
+  const text = (j.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return clean(JSON.parse(m[0])); } catch { return null; }
 }
 
 // ---------------- Handlung aus Wikipedia ----------------
