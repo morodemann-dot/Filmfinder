@@ -48,7 +48,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const dataRows = daten
     ? await fetchAll<DataRow>((from, to) =>
         admin.from("titles")
-          .select("vote_count,runtime_seconds,directors,cast_names,writers,cinematographers,composers,keywords,certification_de,collection_id,oscars,globes,festivals,canon,based_on,wd_genres,narrative_locations,set_in_period,main_subjects,wikidata_checked_at")
+          .select("vote_count,runtime_seconds,directors,cast_names,writers,cinematographers,composers,keywords,certification_de,collection_id,oscars,globes,festivals,canon,based_on,wd_genres,narrative_locations,set_in_period,main_subjects,wikidata_checked_at,wikidata_version,black_and_white,budget_usd,box_office_usd,nominations,filming_locations")
           .eq("media_type", "movie").range(from, to),
       ).catch(() => [] as DataRow[])
     : [];

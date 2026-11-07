@@ -3,7 +3,7 @@ import Poster from "@/components/Poster";
 import TitleCard from "@/components/TitleCard";
 import FeedbackControls from "@/components/FeedbackControls";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { awardDe, formatRuntime, formatVotes, type Status, type Title } from "@/lib/types";
+import { awardDe, formatRuntime, formatUsd, formatVotes, type Status, type Title } from "@/lib/types";
 
 // Detailseite eines Films oder einer Serie.
 export default async function TitlePage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +46,7 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
     title.original_language?.toUpperCase(),
     formatVotes(title.vote_average, title.vote_count) && `TMDB ${formatVotes(title.vote_average, title.vote_count)}`,
     title.certification_de && `FSK ${title.certification_de}`,
+    title.black_and_white && "Schwarzweiß",
     title.countries.length > 0 && title.countries.join(", "),
   ].filter(Boolean);
 
@@ -120,14 +121,30 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
             {(title.canon?.length ?? 0) > 0 && <div className="muted">📚 {title.canon!.join(", ")}</div>}
           </div>
         )}
+        {(title.nominations?.length ?? 0) > 0 && (
+          <details className="small" style={{ marginBottom: 12 }}>
+            <summary style={{ cursor: "pointer" }}>
+              🎟 <strong>{title.nominations!.length}{title.nominations!.length >= 25 ? "+" : ""} Nominierungen</strong> <span className="muted">anzeigen ›</span>
+            </summary>
+            <div className="muted" style={{ marginTop: 6 }}>{title.nominations!.join(" · ")}</div>
+          </details>
+        )}
         {title.overview && <p style={{ lineHeight: 1.55 }}>{title.overview}</p>}
 
-        {(title.based_on?.length || title.set_in_period?.length || title.narrative_locations?.length || title.main_subjects?.length) ? (
+        {(title.based_on?.length || title.set_in_period?.length || title.narrative_locations?.length || title.main_subjects?.length || title.filming_locations?.length || title.budget_usd || title.box_office_usd) ? (
           <div className="small" style={{ display: "grid", gap: 4, marginBottom: 14 }}>
             {(title.based_on?.length ?? 0) > 0 && <div><span className="muted">Basiert auf: </span>{title.based_on!.join(", ")}</div>}
             {(title.set_in_period?.length ?? 0) > 0 && <div><span className="muted">Spielt: </span>{title.set_in_period!.join(", ")}</div>}
             {(title.narrative_locations?.length ?? 0) > 0 && <div><span className="muted">Ort: </span>{title.narrative_locations!.join(", ")}</div>}
             {(title.main_subjects?.length ?? 0) > 0 && <div><span className="muted">Themen: </span>{title.main_subjects!.map((x) => x.replace(/^Person: /, "")).join(", ")}</div>}
+            {(title.filming_locations?.length ?? 0) > 0 && <div><span className="muted">Gedreht in: </span>{title.filming_locations!.join(", ")}</div>}
+            {(title.budget_usd || title.box_office_usd) && (
+              <div>
+                {title.budget_usd ? <><span className="muted">Budget: </span>{formatUsd(title.budget_usd)}</> : null}
+                {title.budget_usd && title.box_office_usd ? " · " : null}
+                {title.box_office_usd ? <><span className="muted">Einspiel: </span>{formatUsd(title.box_office_usd)}</> : null}
+              </div>
+            )}
           </div>
         ) : null}
         {((title.wd_genres?.length ?? 0) > 0 || (title.keywords?.length ?? 0) > 0) && (

@@ -1,5 +1,6 @@
 import RefreshButton from "@/components/RefreshButton";
 import WikidataButton from "@/components/WikidataButton";
+import { WIKIDATA_VERSION } from "@/lib/wikidata";
 
 // "Datenlage": Wie gut sind die Filme beschrieben – und was fehlt noch für Stufe 2?
 
@@ -9,7 +10,9 @@ export type DataRow = {
   certification_de: string | null; collection_id: number | null; oscars: string[] | null; globes: string[] | null;
   festivals: string[] | null; canon: string[] | null; based_on: string[] | null; wd_genres: string[] | null;
   narrative_locations: string[] | null; set_in_period: string[] | null; main_subjects: string[] | null;
-  wikidata_checked_at: string | null;
+  wikidata_checked_at: string | null; wikidata_version: number | null;
+  black_and_white: boolean | null; budget_usd: number | null; box_office_usd: number | null;
+  nominations: string[] | null; filming_locations: string[] | null;
 };
 
 const has = (v: unknown) => (Array.isArray(v) ? v.length > 0 : v != null && v !== "");
@@ -66,7 +69,7 @@ const SPEC: { status: "da" | "teil" | "fehlt"; text: string }[] = [
 export default function DataStatus({ rows, tmdbMissing }: { rows: DataRow[]; tmdbMissing: number }) {
   const total = rows.length;
   const count = (k: keyof DataRow) => rows.filter((r) => has(r[k])).length;
-  const wdChecked = rows.filter((r) => r.wikidata_checked_at).length;
+  const wdChecked = rows.filter((r) => (r.wikidata_version ?? 0) >= WIKIDATA_VERSION).length;
   const wdMissing = total - wdChecked;
 
   const tally = (k: keyof DataRow, skip: (s: string) => boolean = () => false) => {
@@ -92,7 +95,7 @@ export default function DataStatus({ rows, tmdbMissing }: { rows: DataRow[]; tmd
             {tmdbMissing > 0 ? <RefreshButton missing={tmdbMissing} label="TMDB-Daten laden" /> : <p className="success">Alles geladen.</p>}
           </div>
           <div>
-            <p className="caption" style={{ marginTop: 0 }}>Wikidata: basiert auf, Handlungsort, Zeit, Hauptthema, feine Genres – noch nicht geprüft: {wdMissing} Filme.</p>
+            <p className="caption" style={{ marginTop: 0 }}>Wikidata: basiert auf, Handlungsort, Zeit, Hauptthema, feine Genres, Schwarzweiß, Budget, Einspielergebnis, Nominierungen, Drehorte – noch nicht (neu) geprüft: {wdMissing} Filme.</p>
             {wdMissing > 0 ? <WikidataButton missing={wdMissing} /> : <p className="success">Alles geprüft.</p>}
           </div>
         </div>
@@ -122,6 +125,11 @@ export default function DataStatus({ rows, tmdbMissing }: { rows: DataRow[]; tmd
           <Bar label="Handlungsort" n={count("narrative_locations")} total={total} />
           <Bar label="Zeit der Handlung" n={count("set_in_period")} total={total} />
           <Bar label="Hauptthema" n={count("main_subjects")} total={total} />
+          <Bar label="Farbe bekannt" n={count("black_and_white")} total={total} hint={`Davon Schwarzweiß: ${rows.filter((r) => r.black_and_white).length}`} />
+          <Bar label="Budget" n={count("budget_usd")} total={total} />
+          <Bar label="Einspielergebnis" n={count("box_office_usd")} total={total} />
+          <Bar label="Nominierungen" n={count("nominations")} total={total} hint="Filme ohne Nominierung sind kein Mangel." />
+          <Bar label="Drehorte" n={count("filming_locations")} total={total} />
         </div>
       </div>
 
@@ -163,6 +171,8 @@ export default function DataStatus({ rows, tmdbMissing }: { rows: DataRow[]; tmd
         <Top title="Häufigste Themen (Wikidata)" counts={tally("main_subjects")} />
         <Top title="Häufigste Zeiten der Handlung" counts={tally("set_in_period")} limit={16} />
         <Top title="Häufigste Handlungsorte" counts={tally("narrative_locations")} limit={16} />
+        <Top title="Häufigste Drehorte" counts={tally("filming_locations")} limit={16} />
+        <Top title="Häufigste Nominierungen" counts={tally("nominations")} limit={20} />
       </div>
     </div>
   );

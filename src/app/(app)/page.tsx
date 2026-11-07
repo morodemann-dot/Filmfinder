@@ -12,6 +12,8 @@ import { formatRuntime, type Title } from "@/lib/types";
 
 const COLS =
   "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds,keywords,wd_genres,main_subjects,writers,cinematographers,composers,based_on";
+// Ergänzung 12 (Wikidata) – fehlt sie noch, läuft die Seite mit den Grundspalten weiter
+const COLS_EXTRA = COLS + ",black_and_white,budget_usd,nominations";
 
 type SP = { stimmung?: string; zeit?: string; modus?: string };
 
@@ -41,12 +43,13 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
 
   const supabase = await createClient();
   const user = await getUser();
-  const [mine, catalog] = await Promise.all([
+  const load = (cols: string) => Promise.all([
     fetchAll<{ status: string; rating: number | null; titles: Title | null }>((from, to) =>
-      supabase.from("user_title_feedback").select(`status,rating,titles(${COLS})`).eq("user_id", user!.id).range(from, to),
+      supabase.from("user_title_feedback").select(`status,rating,titles(${cols})`).eq("user_id", user!.id).range(from, to),
     ),
-    fetchAll<Title>((from, to) => supabase.from("titles").select(COLS).eq("media_type", "movie").range(from, to)),
+    fetchAll<Title>((from, to) => supabase.from("titles").select(cols).eq("media_type", "movie").range(from, to)),
   ]);
+  const [mine, catalog] = await load(COLS_EXTRA).catch(() => load(COLS));
 
   const rated: RatedTitle[] = mine.filter((m) => m.titles).map((m) => ({ ...m.titles!, rating: m.rating, status: m.status }));
   const seen = new Set(rated.map((r) => r.id));
@@ -141,7 +144,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
       <details className="panel" style={{ marginTop: 28 }}>
         <summary className="eyebrow" style={{ cursor: "pointer" }}>Was die App über dich gelernt hat</summary>
         <p className="caption">
-          Basierend auf {ratedCount} Bewertungen. Bisher berücksichtigt: Genre, Regie, Besetzung, Filmreihen und Preise.
+          Basierend auf {ratedCount} Bewertungen. Bisher berücksichtigt: Genre, feine Genres, Regie, Besetzung, Drehbuch, Kamera, Musik, Themen, Vorlage, Filmreihen, Preise & Nominierungen, Budget und Schwarzweiß.
           Stimmungen beruhen vorerst auf Genres – mit Stufe 2 (KI-Merkmale wie Grundstimmung, Spannung, Humor) werden sie genauer.
         </p>
         <div className="tags" style={{ marginBottom: 0 }}>

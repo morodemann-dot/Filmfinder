@@ -35,6 +35,11 @@ export type Title = {
   narrative_locations?: string[] | null;
   set_in_period?: string[] | null;
   main_subjects?: string[] | null;
+  black_and_white?: boolean | null;
+  budget_usd?: number | null;
+  box_office_usd?: number | null;
+  nominations?: string[] | null;
+  filming_locations?: string[] | null;
   canon?: string[] | null;
   cast_names?: string[] | null;
   globes?: string[] | null;
@@ -110,4 +115,12 @@ export function awardDe(name: string) {
 export function formatVotes(avg: number | null | undefined, count: number | null | undefined) {
   if (avg == null || count == null) return null;
   return `${avg.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} · ${count.toLocaleString("de-DE")} Stimmen`;
+}
+
+// Geldbetrag kurz: 160000000 → "160 Mio. $", 2847379794 → "2,8 Mrd. $"
+export function formatUsd(v: number | null | undefined) {
+  if (!v) return null;
+  if (v >= 1e9) return `${(v / 1e9).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Mrd. $`;
+  if (v >= 1e6) return `${Math.round(v / 1e6).toLocaleString("de-DE")} Mio. $`;
+  return `${Math.round(v / 1e3).toLocaleString("de-DE")} Tsd. $`;
 }

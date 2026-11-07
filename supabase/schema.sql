@@ -50,6 +50,12 @@ create table if not exists public.titles (
   set_in_period     text[] not null default '{}',   -- Wikidata: Zeit der Handlung
   main_subjects     text[] not null default '{}',   -- Wikidata: Hauptthema
   wikidata_checked_at timestamptz,
+  black_and_white   boolean,                          -- Wikidata: Schwarzweiß
+  budget_usd        bigint,                           -- Wikidata: Budget (US-$)
+  box_office_usd    bigint,                           -- Wikidata: Einspielergebnis (US-$)
+  nominations       text[] not null default '{}',   -- Wikidata: Nominierungen
+  filming_locations text[] not null default '{}',   -- Wikidata: Drehorte
+  wikidata_version  smallint,
   kept_at           timestamptz,                      -- beim Aussortieren geprüft & behalten
   metadata_source   text not null default 'tmdb',
   fetched_at        timestamptz not null default now(),  -- TMDB: max. 6 Monate speichern, dann auffrischen

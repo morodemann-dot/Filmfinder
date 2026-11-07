@@ -15,7 +15,7 @@ export type RatedTitle = Title & { rating: number | null; status: string };
 
 type FeatureKind =
   | "genre" | "regie" | "besetzung" | "reihe" | "jahrzehnt" | "preise"
-  | "subgenre" | "thema" | "drehbuch" | "kamera" | "musik" | "vorlage";
+  | "subgenre" | "thema" | "drehbuch" | "kamera" | "musik" | "vorlage" | "stil" | "budget";
 
 // Wie stark eine Merkmalsart zählt (vorläufig, wie in der Spezifikation vorgesehen)
 const KIND_WEIGHT: Record<FeatureKind, number> = {
@@ -31,6 +31,8 @@ const KIND_WEIGHT: Record<FeatureKind, number> = {
   kamera: 0.3,
   musik: 0.3,
   vorlage: 0.3, // basiert auf Buch / Comic / wahrer Person …
+  stil: 0.4, // Schwarzweiß
+  budget: 0.4, // Großproduktion vs. kleiner Film
 };
 
 // Zu allgemeine Begriffe zählen nicht (sagen nichts über den Geschmack)
@@ -68,6 +70,13 @@ function featuresOf(t: Title): Feature[] {
   for (const b of t.based_on ?? []) {
     const kind = b.includes(":") ? b.split(":")[0] : null; // "Buch", "Comic", "wahre Person" …
     if (kind) f.push({ key: `vorlage:${kind}`, kind: "vorlage", label: `nach ${kind === "wahre Person" ? "wahrer Geschichte" : kind}` });
+  }
+  if (t.black_and_white) f.push({ key: "stil:sw", kind: "stil", label: "Schwarzweiß-Filme" });
+  if ((t.nominations?.length ?? 0) >= 5) f.push({ key: "preise:nominiert", kind: "preise", label: "Viel nominierte Filme" });
+  if (t.budget_usd) {
+    const b = t.budget_usd;
+    const [key, label] = b >= 100e6 ? ["gross", "Großproduktionen"] : b < 20e6 ? ["klein", "Kleinere Produktionen"] : ["mittel", "Mittleres Budget"];
+    f.push({ key: `budget:${key}`, kind: "budget", label });
   }
   return f;
 }
@@ -130,6 +139,8 @@ const KIND_LABEL: Record<FeatureKind, string> = {
   kamera: "Kamera",
   musik: "Musik",
   vorlage: "Vorlage",
+  stil: "",
+  budget: "",
   regie: "Regie",
   besetzung: "Mit",
   genre: "Genre",
