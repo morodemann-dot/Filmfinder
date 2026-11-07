@@ -398,12 +398,17 @@ export async function aiPilotChunk(model: AiModelKey, scope: AiScope = "rated"):
 // ---------------- Katalog auffüllen (ein Knopf, sinnvolle Auswahl) ----------------
 // Pro Jahr ab 1990: zwei Drittel die meistgesehenen, ein Drittel die bestbewerteten Filme –
 // so kommen Blockbuster und Kritikerlieblinge gleichermaßen hinein. Alle Katalog-Regeln gelten.
+export type FillResult = { added: number; skipped: number; why: Partial<ImportResult>; error?: string };
+
 export async function fillCatalogYear(
-  year: number, perYear: number, opts: { noKids?: boolean; allowNetflix?: boolean } = {},
-): Promise<{ added: number; skipped: number; error?: string }> {
+  year: number, perYear: number, opts: { noKids?: boolean; allowNetflix?: boolean; minVotes?: number } = {},
+): Promise<FillResult> {
   try {
     await requireAdmin();
     const admin = createAdminClient();
+    const settings = await getCatalogSettings();
+    // Ältere Filme haben bei TMDB weniger Stimmen – dort etwas großzügiger
+    const minVotes = Math.round((opts.minVotes ?? settings.min_votes) * (year < 2000 ? 0.6 : 1));
     const want = Math.max(5, Math.min(200, perYear));
     const wantPopular = Math.round(want * 0.67);
 
@@ -411,7 +416,7 @@ export async function fillCatalogYear(
     async function collect(sort: "votes" | "rating", need: number, maxPages: number, exclude: Set<number>) {
       const found: number[] = [];
       for (let p = 1; p <= maxPages && found.length < need; p++) {
-        const r = await discoverYear(year, sort, p, !!opts.noKids);
+        const r = await discoverYear(year, sort, p, !!opts.noKids, minVotes, settings.min_rating);
         const ids = r.ids.filter((id) => !exclude.has(id));
         if (ids.length) {
           const [{ data: have }, { data: blocked }] = await Promise.all([
@@ -432,17 +437,17 @@ export async function fillCatalogYear(
     // Mischung ⅔ / ⅓ – erst genau so viele importieren wie gewünscht, dann Ausfälle mit Reserve auffüllen
     const first = [...popular.slice(0, wantPopular), ...acclaimed.slice(0, want - wantPopular)];
     const reserve = [...popular.slice(wantPopular), ...acclaimed.slice(want - wantPopular)];
-    const importOpts = { gate: true, skipExisting: true, source: "Katalog auffüllen", noKids: opts.noKids, allowNetflix: opts.allowNetflix };
-    const res = await importMovieIds(first, importOpts);
-    let added = res.ok, tried = first.length;
-    if (added < want && reserve.length) {
-      const more = reserve.slice(0, want - added);
-      added += (await importMovieIds(more, importOpts)).ok;
+    const importOpts = { gate: true, skipExisting: true, source: "Katalog auffüllen", noKids: opts.noKids, allowNetflix: opts.allowNetflix, minVotes };
+    let res = await importMovieIds(first, importOpts);
+    let tried = first.length;
+    if (res.ok < want && reserve.length) {
+      const more = reserve.slice(0, want - res.ok);
+      res = addResults(res, await importMovieIds(more, importOpts));
       tried += more.length;
     }
-    if (added) invalidateCatalogCache();
-    return { added, skipped: tried - added };
+    if (res.ok) invalidateCatalogCache();
+    return { added: res.ok, skipped: tried - res.ok, why: res };
   } catch (e) {
-    return { added: 0, skipped: 0, error: e instanceof Error ? e.message : String(e) };
+    return { added: 0, skipped: 0, why: {}, error: e instanceof Error ? e.message : String(e) };
   }
 }

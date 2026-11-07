@@ -34,6 +34,7 @@ export type ImportOpts = {
   skipExisting?: boolean; // Filme, die schon im Katalog sind, nicht erneut laden
   allowNetflix?: boolean; // Netflix-Produktionen ausnahmsweise erlauben
   noKids?: boolean; // Kinderfilme auslassen (Familienfilme, Animation ab 0/6)
+  minVotes?: number; // abweichende Mindest-Stimmen (z. B. beim Auffüllen)
 };
 
 // Kinderfilm: Familienfilm oder Animationsfilm mit FSK 0/6
@@ -119,7 +120,7 @@ export async function importMovieIds(ids: number[], opts: ImportOpts = {}): Prom
       // Ausnahmen von der Qualitätsschwelle: Preisträger, Festival-Gewinner, Kanon, ggf. Filmreihen
       const exempt = awarded || t.festivals.length > 0 || t.canon.length > 0 ||
         (opts.series && settings.series_exempt && !!t.collection_id);
-      const weak = (t.vote_average ?? 0) < settings.min_rating || (t.vote_count ?? 0) < settings.min_votes;
+      const weak = (t.vote_average ?? 0) < settings.min_rating || (t.vote_count ?? 0) < (opts.minVotes ?? settings.min_votes);
       if (!exempt && weak) { res.quality++; continue; }
     }
     rows.push(t);

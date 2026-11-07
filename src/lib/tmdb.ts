@@ -421,13 +421,13 @@ export async function recommendations(tmdbId: number) {
 }
 
 // Für "Katalog auffüllen": Filme eines Jahres – nach Bekanntheit (Anzahl Stimmen) oder Bewertung
-export async function discoverYear(year: number, sort: "votes" | "rating", page: number, noKids = false) {
+export async function discoverYear(year: number, sort: "votes" | "rating", page: number, noKids = false, minVotes = 600, minRating = 6.0) {
   const d = await tmdb<DiscoverResult>("/discover/movie", {
     ...(noKids ? { without_genres: "10751" } : {}), // 10751 = Familie
     sort_by: sort === "votes" ? "vote_count.desc" : "vote_average.desc",
     primary_release_year: String(year),
-    "vote_count.gte": sort === "votes" ? "600" : "1500",
-    "vote_average.gte": "6.0",
+    "vote_count.gte": String(sort === "votes" ? minVotes : Math.max(minVotes, 1000)),
+    "vote_average.gte": String(minRating),
     "with_runtime.gte": "60",
     include_adult: "false",
     page: String(page),
