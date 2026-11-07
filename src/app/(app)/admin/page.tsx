@@ -6,8 +6,7 @@ import Curate from "./Curate";
 import Suspects from "./Suspects";
 import Review from "./Review";
 import DataStatus, { type DataRow } from "./DataStatus";
-import AiPilot from "./AiPilot";
-import { aiPilotStatus } from "@/app/catalog-actions";
+import KiArea from "./KiArea";
 import { SettingsPanel } from "./SourceForms";
 import { DEFAULT_SETTINGS, getCatalogSettings } from "@/lib/importer";
 import { clearBlocklist, unblockTitle } from "@/app/actions";
@@ -28,7 +27,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const suspects = bereich === "verdacht";
   const review = bereich === "pruefen";
   const daten = bereich === "daten";
-  const add = !manage && !curate && !suspects && !review && !daten;
+  const ki = bereich === "ki";
+  const add = !manage && !curate && !suspects && !review && !daten && !ki;
 
   const admin = createAdminClient();
   const [movies, shows, blocked, waiting] = await Promise.all([
@@ -54,7 +54,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           .eq("media_type", "movie").range(from, to),
       ).catch(() => [] as DataRow[])
     : [];
-  const aiStatus = daten ? await aiPilotStatus() : null;
   const tmdbMissing = daten
     ? (await admin.from("titles").select("id", { count: "exact", head: true }).or("vote_count.is.null,keywords.is.null")).count ?? 0
     : 0;
@@ -73,26 +72,24 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         {(blocked.count ?? 0) > 0 && ` · ${blocked.count} gesperrt`}
       </p>
 
-      <div className="segmented four" style={{ margin: "14px 0 20px", maxWidth: 520 }}>
+      <div className="segmented four five" style={{ margin: "14px 0 20px", maxWidth: 600 }}>
         <Link href="/admin" aria-pressed={add || review || daten} className="seg-link">Hinzufügen</Link>
         <Link href="/admin?bereich=aussortieren" aria-pressed={curate} className="seg-link">Aussortieren</Link>
         <Link href="/admin?bereich=verdacht" aria-pressed={suspects} className="seg-link">Verdachtsfälle</Link>
         <Link href="/admin?bereich=verwalten" aria-pressed={manage} className="seg-link">Verwalten</Link>
+        <Link href="/admin?bereich=ki" aria-pressed={ki} className="seg-link">KI</Link>
       </div>
 
-      {daten ? (
+      {ki ? (
+        <KiArea userId={user!.id} />
+      ) : daten ? (
         <>
           <Link href="/admin" className="caption">‹ Zurück zu Hinzufügen</Link>
           <h2 style={{ marginTop: 10 }}>Datenlage</h2>
-          <div className="panel" style={{ marginBottom: 14 }}>
-            <div className="eyebrow" style={{ marginBottom: 4 }}>Stufe 2 – Probelauf mit KI</div>
-            <p className="caption" style={{ marginTop: 0 }}>
-              Die KI schätzt für deine bewerteten Filme 15 tiefe Merkmale ein (Stimmung, Tempo, Komplexität, Spannung, Humor,
-              Härte, Grauzonen, offenes Ende, Nachwirkung …). Danach zeigt der Messtest, ob die Vorschläge dadurch treffsicherer werden.
-              Jeder Film wird pro Modell nur einmal eingeschätzt.
-            </p>
-            <AiPilot status={aiStatus} />
-          </div>
+          <Link href="/admin?bereich=ki" className="waiting-banner" style={{ background: "var(--surface)", marginBottom: 14 }}>
+            <span><strong>Stufe 2 – KI-Merkmale</strong><span className="caption"> · Probelauf, Vergleich & Modell-Duell</span></span>
+            <span aria-hidden>›</span>
+          </Link>
           <DataStatus rows={dataRows} tmdbMissing={tmdbMissing} />
         </>
       ) : review ? (

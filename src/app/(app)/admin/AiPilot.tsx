@@ -3,13 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { aiPilotChunk, type AiStatus } from "@/app/catalog-actions";
+import { aiPilotChunk, type AiScope, type AiStatus } from "@/app/catalog-actions";
 import { AI_MODELS, type AiModelKey } from "@/lib/aiFeatures";
 
 const usd = (x: number) => x.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " $";
 
-// Stufe 2 – Probelauf: die KI schätzt deine bewerteten Filme ein (je Modell einmal).
-export default function AiPilot({ status }: { status: AiStatus[] | null }) {
+// Stufe 2 – Probelauf: die KI schätzt Filme ein (je Modell einmal).
+// scope "rated" = deine bewerteten Filme, "test" = Testfilme fürs Modell-Duell
+export default function AiPilot({ status, scope = "rated", showLink = false }: { status: AiStatus[] | null; scope?: AiScope; showLink?: boolean }) {
   const router = useRouter();
   const [running, setRunning] = useState<AiModelKey | null>(null);
   const [progress, setProgress] = useState<Record<string, number>>({});
@@ -33,7 +34,7 @@ export default function AiPilot({ status }: { status: AiStatus[] | null }) {
       for (;;) {
         let r;
         try {
-          r = await aiPilotChunk(model);
+          r = await aiPilotChunk(model, scope);
           retries = 0;
         } catch (e) {
           // Kurze Verbindungsabbrüche: automatisch weitermachen (bereits Fertiges bleibt gespeichert)
@@ -85,7 +86,7 @@ export default function AiPilot({ status }: { status: AiStatus[] | null }) {
       {running && <p className="caption" style={{ margin: 0 }}>Seite bitte offen lassen – ca. 1–2 Sekunden pro Film.</p>}
       {skipped > 0 && <p className="caption" style={{ margin: 0 }}>{skipped} Filme übersprungen (werden beim nächsten Start erneut versucht){lastError ? ` – Grund: ${lastError}` : ""}.</p>}
       {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
-      {anyDone && !running && <Link href="/messtest" className="btn primary">Zum Messtest ›</Link>}
+      {showLink && anyDone && !running && <Link href="/messtest" className="btn primary">Zum Messtest ›</Link>}
     </div>
   );
 }

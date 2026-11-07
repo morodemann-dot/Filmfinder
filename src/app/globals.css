@@ -454,3 +454,4 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .spec-list li.teil .spec-dot { color: var(--accent); }
 .spec-list li.fehlt { color: var(--muted); }
 .spec-list li.fehlt .spec-dot { color: var(--danger); }
+.segmented.five .seg-link { font-size: 0.72rem; padding: 0 1px; letter-spacing: -0.01em; }

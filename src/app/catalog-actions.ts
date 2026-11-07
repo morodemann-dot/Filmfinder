@@ -322,42 +322,47 @@ export async function enrichWikidataChunk(): Promise<{ done: number; found: numb
 
 // ---------------- Stufe 2: KI-Merkmale (Probelauf) ----------------
 
-export type AiStatus = { model: AiModelKey; done: number; total: number; costUsd: number };
+export type AiScope = "rated" | "test"; // deine bewerteten Filme | Testfilme fürs Modell-Duell
+export type AiStatus = { model: AiModelKey; scope: AiScope; done: number; total: number; costUsd: number };
 
-async function myRatedIds() {
+async function scopeIds(scope: AiScope) {
   const user = await getUser();
-  const rows = await fetchAll<{ title_id: number }>((from, to) =>
-    createAdminClient().from("user_title_feedback").select("title_id")
-      .eq("user_id", user!.id).eq("status", "gesehen").not("rating", "is", null).range(from, to),
-  );
+  const rows = scope === "test"
+    ? await fetchAll<{ title_id: number }>((from, to) =>
+        createAdminClient().from("ai_duel").select("title_id").eq("user_id", user!.id).range(from, to),
+      ).catch(() => [])
+    : await fetchAll<{ title_id: number }>((from, to) =>
+        createAdminClient().from("user_title_feedback").select("title_id")
+          .eq("user_id", user!.id).eq("status", "gesehen").not("rating", "is", null).range(from, to),
+      );
   return rows.map((r) => r.title_id);
 }
 
 // Stand des Probelaufs je Modell (für die Datenlage-Seite)
-export async function aiPilotStatus(): Promise<AiStatus[] | null> {
+export async function aiPilotStatus(scope: AiScope = "rated"): Promise<AiStatus[] | null> {
   await requireAdmin();
-  const ids = new Set(await myRatedIds());
+  const ids = new Set(await scopeIds(scope));
   const res = await fetchAll<{ title_id: number; model: string; input_tokens: number; output_tokens: number }>((from, to) =>
     createAdminClient().from("title_features").select("title_id,model,input_tokens,output_tokens").range(from, to),
   ).catch(() => null);
   if (!res) return null; // Ergänzung 13 fehlt noch
   return (Object.keys(AI_MODELS) as AiModelKey[]).map((model) => {
     const rows = res.filter((r) => r.model === model);
-    const inTok = rows.reduce((s, r) => s + r.input_tokens, 0);
-    const outTok = rows.reduce((s, r) => s + r.output_tokens, 0);
-    return { model, done: rows.filter((r) => ids.has(r.title_id)).length, total: ids.size, costUsd: costUsd(model, inTok, outTok) };
+    const mine = rows.filter((r) => ids.has(r.title_id));
+    const cost = costUsd(model, mine.reduce((s, r) => s + r.input_tokens, 0), mine.reduce((s, r) => s + r.output_tokens, 0));
+    return { model, scope, done: mine.length, total: ids.size, costUsd: cost };
   });
 }
 
 // Schätzt die nächsten paar deiner bewerteten Filme ein (Haiku 6, Sonnet 3 – Sonnet ist langsamer). Die Seite ruft das so lange auf, bis alle fertig sind.
 // Fehler werden als Text zurückgegeben (nicht geworfen) – sonst blendet Next.js sie in der
 // veröffentlichten Version aus, und man sieht nur "Verbindung abgebrochen".
-export async function aiPilotChunk(model: AiModelKey): Promise<{ done: number; remaining: number; errors: string[]; fatal?: string }> {
+export async function aiPilotChunk(model: AiModelKey, scope: AiScope = "rated"): Promise<{ done: number; remaining: number; errors: string[]; fatal?: string }> {
   try {
     await requireAdmin();
     if (!(model in AI_MODELS)) return { done: 0, remaining: 0, errors: [], fatal: "Unbekanntes Modell." };
     const admin = createAdminClient();
-    const ids = await myRatedIds();
+    const ids = await scopeIds(scope);
     const { data: have, error } = await admin.from("title_features").select("title_id").eq("model", model).limit(10000);
     if (error) return { done: 0, remaining: 0, errors: [], fatal: error.message + " (wurde die Ergänzung 13 im SQL Editor ausgeführt?)" };
     const done = new Set((have ?? []).map((r) => r.title_id as number));
