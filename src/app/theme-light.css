@@ -10,7 +10,7 @@
   --line: rgba(0, 0, 0, 0.1);
   --text: #1c1c1e;
   --muted: #6c6c70;
-  --accent: #f08c00;
+  --accent: #ff7a00;
   --accent-ink: #1a1000;
   --danger: #e5352b;
   --ok: #248a3d;
@@ -48,14 +48,24 @@
 [data-theme="light"] .welcome-backdrop { background: rgba(0, 0, 0, 0.3); }
 [data-theme="light"] .sk { background: linear-gradient(90deg, #e5e5ea 0%, #f2f2f7 50%, #e5e5ea 100%); background-size: 200% 100%; }
 
-/* Schwebende Leiste */
+/* Schwebende Leiste: im Hellen fast deckend weiß, klare Kante, dunkle Symbole */
 [data-theme="light"] .nav {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.6)), rgba(255, 255, 255, 0.4);
-  border: 0.5px solid rgba(0, 0, 0, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(250, 250, 252, 0.92));
+  border: 0.5px solid rgba(0, 0, 0, 0.14);
+  box-shadow: inset 0 1px 0 #fff, 0 10px 30px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.12);
 }
-[data-theme="light"] .nav a { color: rgba(28, 28, 30, 0.6); }
-[data-theme="light"] .nav a[aria-current="page"] { background: rgba(0, 0, 0, 0.06); box-shadow: none; }
+[data-theme="light"] .nav a { color: #48484a; }
+[data-theme="light"] .nav a[aria-current="page"] {
+  color: var(--accent); background: rgba(255, 122, 0, 0.14); box-shadow: inset 0 0 0 0.5px rgba(255, 122, 0, 0.35);
+}
+[data-theme="light"] .nav a[aria-current="page"] svg { filter: none; }
+
+/* Orange kräftiger */
+[data-theme="light"] .btn.primary {
+  background: linear-gradient(180deg, #ff9a2e 0%, #ff7a00 55%, #f06400 100%); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 6px 18px rgba(255, 122, 0, 0.4);
+}
+[data-theme="light"] .brand span { color: var(--accent); }
 
 /* Auswahl Automatisch / Hell / Dunkel */
 .theme-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -64,3 +74,25 @@
   background: var(--surface); color: var(--text); border: 0.5px solid var(--line);
 }
 .theme-pick button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; font-weight: 600; }
+
+/* Sonne/Mond-Knopf oben rechts */
+.theme-toggle {
+  width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; cursor: pointer; padding: 0;
+  color: var(--text); background: var(--glass, var(--surface)); border: 0.5px solid var(--glass-edge, var(--line));
+  -webkit-tap-highlight-color: transparent;
+}
+.theme-toggle:active { transform: scale(0.9); }
+.theme-toggle.light { color: #ff7a00; }
+.theme-toggle svg { overflow: visible; }
+.theme-toggle .tt-core, .theme-toggle .tt-cut, .theme-toggle .tt-rays {
+  transform-box: view-box; transform-origin: 12px 12px;
+  transition: transform 0.5s cubic-bezier(0.5, 1.5, 0.5, 1), opacity 0.35s ease;
+}
+/* Dunkel = Mond: große Scheibe, ausgeschnittene Sichel, keine Strahlen */
+.theme-toggle.dark .tt-core { transform: rotate(-20deg); }
+.theme-toggle.dark .tt-rays { opacity: 0; transform: rotate(-90deg) scale(0.4); }
+/* Hell = Sonne: kleine Scheibe, Ausschnitt fährt weg, Strahlen drehen sich herein */
+.theme-toggle.light .tt-core { transform: scale(0.55) rotate(90deg); }
+.theme-toggle.light .tt-cut { transform: translate(10px, -10px); }
+.theme-toggle.light .tt-rays { opacity: 1; transform: rotate(0deg) scale(1); }
+@media (prefers-reduced-motion: reduce) { .theme-toggle * { transition: none !important; } }

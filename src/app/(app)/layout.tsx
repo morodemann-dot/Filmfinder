@@ -1,6 +1,7 @@
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import Welcome from "@/components/Welcome";
+import { ThemeToggle } from "@/components/ThemePicker";
 import { logout } from "@/app/actions";
 import { createClient, getUser, isAdmin } from "@/lib/supabase/server";
 
@@ -28,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <form action={logout}>
               <button className="btn ghost" style={{ minHeight: 30, padding: 0, fontSize: "0.85rem" }}>Abmelden</button>
             </form>
+            <ThemeToggle />
           </div>
         </header>
         {children}

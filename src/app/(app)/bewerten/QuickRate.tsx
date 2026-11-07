@@ -201,17 +201,14 @@ export default function QuickRate({
 
       {/* Alle anderen Antworten in einer Reihe */}
       <div className="quick-acts">
-        <button className={`qa ${shown?.status === "gesehen" && !shown.rating ? "on" : ""}`} onClick={() => answer("gesehen")}>
-          <span className="qa-icon" aria-hidden>✓</span>Gesehen,<br />ohne Punkte
-        </button>
         <button className={`qa ${shown?.status === "nicht_gesehen" ? "on" : ""}`} onClick={() => answer("nicht_gesehen")}>
-          <span className="qa-icon" aria-hidden>»</span>Nicht<br />gesehen
+          <span className="qa-icon" aria-hidden>»</span>Nicht gesehen
         </button>
         <button className={`qa ${shown?.status === "merkliste" ? "on" : ""}`} onClick={() => answer("merkliste")}>
-          <span className="qa-icon keep" aria-hidden>+</span>Merk-<br />liste
+          <span className="qa-icon keep" aria-hidden>+</span>Merkliste
         </button>
         <button className={`qa ${shown?.status === "nicht_interessiert" ? "on" : ""}`} onClick={() => answer("nicht_interessiert")}>
-          <span className="qa-icon remove" aria-hidden>✕</span>Kein<br />Interesse
+          <span className="qa-icon remove" aria-hidden>✕</span>Kein Interesse
         </button>
       </div>
 

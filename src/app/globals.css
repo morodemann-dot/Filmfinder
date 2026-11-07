@@ -532,7 +532,7 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .question-sheet { bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); }
 
 /* ---------- Bewerten: kompakt, ohne Scrollen ---------- */
-.quick-poster { position: relative; width: min(190px, 25vh); margin: 0 auto 10px; }
+.quick-poster { position: relative; width: min(170px, 22vh); margin: 0 auto 10px; }
 .quick-poster .poster { width: 100% !important; margin: 0 !important; }
 .quick .quick-poster .flash { width: 100%; }
 .quick-fav {
@@ -544,10 +544,10 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .quick-fav.on { color: #ff375f; background: rgba(255, 255, 255, 0.9); }
 .quick-fav:active { transform: scale(0.9); }
 .quick h2 { margin: 4px 0 2px; }
-.quick-acts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 12px; }
+.quick-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 12px; }
 .qa {
   display: grid; justify-items: center; gap: 4px; padding: 8px 2px; border-radius: 14px; border: 0.5px solid var(--line);
-  background: var(--surface); color: var(--muted); font: inherit; font-size: 0.72rem; line-height: 1.15; cursor: pointer;
+  background: var(--surface); color: var(--muted); font: inherit; font-size: 0.8rem; line-height: 1.15; cursor: pointer;
 }
 .qa-icon { font-size: 1.05rem; color: var(--text); font-weight: 700; }
 .qa-icon.keep { color: var(--ok); }

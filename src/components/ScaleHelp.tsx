@@ -28,7 +28,6 @@ export default function ScaleHelp() {
       </ul>
       <ul className="scale-list other">
         <li><span className="scale-num">♥</span><span><strong>Lieblingsfilm</strong> – unabhängig von den Punkten: ein Film, den du liebst und immer wieder schaust. Zählt für die App besonders stark.</span></li>
-        <li><span className="scale-num">✓</span><span><strong>Gesehen, ohne Punkte</strong> – kennst du, willst aber nicht bewerten.</span></li>
         <li><span className="scale-num">»</span><span><strong>Nicht gesehen</strong> – kommt beim Bewerten nicht wieder, ändert deine Vorschläge nicht.</span></li>
         <li><span className="scale-num">+</span><span><strong>Merkliste</strong> – willst du sehen; leichtes Plus für ähnliche Filme.</span></li>
         <li><span className="scale-num">✕</span><span><strong>Kein Interesse</strong> – nichts für dich; ähnliche Filme rücken nach hinten.</span></li>
