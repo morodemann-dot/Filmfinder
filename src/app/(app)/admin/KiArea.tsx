@@ -174,7 +174,7 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }
       <div className="panel">
         <div className="eyebrow" style={{ marginBottom: 4 }}>3 · Modell-Duell (blind)</div>
         <p className="caption" style={{ marginTop: 0 }}>
-          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1990, die du noch nicht eingeordnet hast: die aktuelle App-Einstellung
+          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1980, die du noch nicht eingeordnet hast: die aktuelle App-Einstellung
           (Interesse + halbe Qualität), „Interesse ×2“ und „Interesse ×2 ohne Qualität“.
           Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
           Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
@@ -184,7 +184,7 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }
           <p className="caption" style={{ margin: 0 }}>Zuerst die <strong>Ergänzung 14</strong> im Supabase SQL Editor ausführen, dann diese Seite neu laden.</p>
         ) : duel.pool === 0 ? (
           <>
-            <p className="small">Schritt 1: Die App wählt 100 Testfilme ab 1990 aus (50, die sie für passend hält, und 50 zufällige solide Filme).</p>
+            <p className="small">Schritt 1: Die App wählt 100 Testfilme ab 1980 aus (50, die sie für passend hält, und 50 zufällige solide Filme).</p>
             <PrepareButton />
           </>
         ) : (

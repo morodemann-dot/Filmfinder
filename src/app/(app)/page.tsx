@@ -94,7 +94,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
     { key: "stimmung", label: "Stimmung", all: "Jede Stimmung", options: MOODS.map((m) => ({ value: m.key, label: m.label, group: m.group ?? "Stimmungen" })) },
     { key: "genre", label: "Genre", all: "Alle Genres", options: [...genreCount.entries()].filter(([, n]) => n >= 5).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([g]) => ({ value: g, label: g })) },
     { key: "zeit", label: "Länge", all: "Jede Länge", options: (Object.keys(TIMES) as TimeKey[]).filter((k) => k !== "egal").map((k) => ({ value: k, label: TIMES[k].label })) },
-    { key: "zeitraum", label: "Zeitraum", all: "Seit 1990", options: Object.entries(PERIODS).filter(([k]) => k !== "alle").map(([k, p]) => ({ value: k, label: p.label })) },
+    { key: "zeitraum", label: "Zeitraum", all: "Seit 1980", options: Object.entries(PERIODS).filter(([k]) => k !== "alle").map(([k, p]) => ({ value: k, label: p.label })) },
     { key: "modus", label: "Entdecken", all: "Entdecken", options: Object.entries(MODES).filter(([k]) => k !== "entdecken").map(([k, label]) => ({ value: k, label })) },
   ];
   if (friendsAvailable.length) {

@@ -398,35 +398,50 @@ export async function aiPilotChunk(model: AiModelKey, scope: AiScope = "rated"):
 // ---------------- Katalog auffüllen (ein Knopf, sinnvolle Auswahl) ----------------
 // Pro Jahr ab 1990: zwei Drittel die meistgesehenen, ein Drittel die bestbewerteten Filme –
 // so kommen Blockbuster und Kritikerlieblinge gleichermaßen hinein. Alle Katalog-Regeln gelten.
-export async function fillCatalogYear(year: number, perYear: number): Promise<{ added: number; skipped: number; error?: string }> {
+export async function fillCatalogYear(
+  year: number, perYear: number, opts: { noKids?: boolean; allowNetflix?: boolean } = {},
+): Promise<{ added: number; skipped: number; error?: string }> {
   try {
     await requireAdmin();
     const admin = createAdminClient();
-    const want = Math.max(10, Math.min(200, perYear));
-    const popular: number[] = [], acclaimed: number[] = [];
-    for (let p = 1; p <= 6 && popular.length < want * 1.6; p++) {
-      const r = await discoverYear(year, "votes", p);
-      popular.push(...r.ids);
-      if (p >= r.totalPages) break;
+    const want = Math.max(5, Math.min(200, perYear));
+    const wantPopular = Math.round(want * 0.67);
+
+    // Blättert so lange weiter, bis genug NEUE Filme gefunden sind (Bekanntes wird übersprungen)
+    async function collect(sort: "votes" | "rating", need: number, maxPages: number, exclude: Set<number>) {
+      const found: number[] = [];
+      for (let p = 1; p <= maxPages && found.length < need; p++) {
+        const r = await discoverYear(year, sort, p, !!opts.noKids);
+        const ids = r.ids.filter((id) => !exclude.has(id));
+        if (ids.length) {
+          const [{ data: have }, { data: blocked }] = await Promise.all([
+            admin.from("titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", ids),
+            admin.from("excluded_titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", ids),
+          ]);
+          const skip = new Set([...(have ?? []), ...(blocked ?? [])].map((x) => x.tmdb_id as number));
+          for (const id of ids) if (!skip.has(id) && found.length < need) { found.push(id); exclude.add(id); }
+        }
+        if (p >= r.totalPages) break;
+      }
+      return found;
     }
-    for (let p = 1; p <= 3 && acclaimed.length < want * 0.8; p++) {
-      const r = await discoverYear(year, "rating", p);
-      acclaimed.push(...r.ids);
-      if (p >= r.totalPages) break;
+    const taken = new Set<number>();
+    // etwas mehr holen, weil die Regeln (Qualität, Herkunft, Kinderfilme …) noch aussortieren
+    const popular = await collect("votes", Math.ceil(wantPopular * 1.4), 12, taken);
+    const acclaimed = await collect("rating", Math.ceil((want - wantPopular) * 1.4), 6, taken);
+    // Mischung ⅔ / ⅓ – erst genau so viele importieren wie gewünscht, dann Ausfälle mit Reserve auffüllen
+    const first = [...popular.slice(0, wantPopular), ...acclaimed.slice(0, want - wantPopular)];
+    const reserve = [...popular.slice(wantPopular), ...acclaimed.slice(want - wantPopular)];
+    const importOpts = { gate: true, skipExisting: true, source: "Katalog auffüllen", noKids: opts.noKids, allowNetflix: opts.allowNetflix };
+    const res = await importMovieIds(first, importOpts);
+    let added = res.ok, tried = first.length;
+    if (added < want && reserve.length) {
+      const more = reserve.slice(0, want - added);
+      added += (await importMovieIds(more, importOpts)).ok;
+      tried += more.length;
     }
-    // Was schon im Katalog ist oder gesperrt wurde, zählt nicht
-    const all = [...new Set([...popular, ...acclaimed])];
-    const [{ data: have }, { data: blocked }] = await Promise.all([
-      admin.from("titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", all),
-      admin.from("excluded_titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", all),
-    ]);
-    const skip = new Set([...(have ?? []), ...(blocked ?? [])].map((r) => r.tmdb_id as number));
-    const newPopular = popular.filter((id) => !skip.has(id));
-    const newAcclaimed = acclaimed.filter((id) => !skip.has(id) && !newPopular.slice(0, Math.round(want * 0.67)).includes(id));
-    const ids = [...newPopular.slice(0, Math.round(want * 0.67)), ...newAcclaimed.slice(0, want - Math.round(want * 0.67))];
-    const res = await importMovieIds(ids, { gate: true, skipExisting: true, source: "Katalog auffüllen" });
-    if (res.ok) invalidateCatalogCache();
-    return { added: res.ok, skipped: ids.length - res.ok };
+    if (added) invalidateCatalogCache();
+    return { added, skipped: tried - added };
   } catch (e) {
     return { added: 0, skipped: 0, error: e instanceof Error ? e.message : String(e) };
   }

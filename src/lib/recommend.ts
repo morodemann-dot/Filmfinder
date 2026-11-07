@@ -75,7 +75,7 @@ export function qualityOf(t: Title): number | null {
 }
 
 // Vorschläge erst ab diesem Erscheinungsjahr (Katalog bleibt unverändert)
-export const SUGGEST_FROM_YEAR = 1990;
+export const SUGGEST_FROM_YEAR = 1980;
 
 export type ScoreOptions = {
   interestWeight?: number; // wie stark zählt, welche ART von Filmen du schaust (0 = aus)

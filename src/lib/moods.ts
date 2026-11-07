@@ -78,10 +78,12 @@ export function matchesTime(t: Title, key: TimeKey) {
   return t.runtime_seconds >= min && t.runtime_seconds < max;
 }
 
-// Zeitraum (Vorschläge gibt es ohnehin erst ab 1990)
+// Zeitraum (Vorschläge gibt es ab 1980)
 export const PERIODS: Record<string, { label: string; from: number; to: number }> = {
-  alle: { label: "Seit 1990", from: 1990, to: 9999 },
+  alle: { label: "Seit 1980", from: 1980, to: 9999 },
+  "80er": { label: "80er", from: 1980, to: 1989 },
   "90er": { label: "90er", from: 1990, to: 1999 },
+  "ab90": { label: "Ab 1990", from: 1990, to: 9999 },
   "2000er": { label: "2000er", from: 2000, to: 2009 },
   "2010er": { label: "2010er", from: 2010, to: 2019 },
   "2020er": { label: "Ab 2020", from: 2020, to: 9999 },

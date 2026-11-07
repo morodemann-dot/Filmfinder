@@ -32,7 +32,15 @@ export type ImportOpts = {
   source?: string; // Woher? (wird bei Kandidaten angezeigt)
   gate?: boolean; // Qualitätsschwelle prüfen (Standard: ja)
   skipExisting?: boolean; // Filme, die schon im Katalog sind, nicht erneut laden
+  allowNetflix?: boolean; // Netflix-Produktionen ausnahmsweise erlauben
+  noKids?: boolean; // Kinderfilme auslassen (Familienfilme, Animation ab 0/6)
 };
+
+// Kinderfilm: Familienfilm oder Animationsfilm mit FSK 0/6
+export function isKidsFilm(t: { genres: string[]; certification_de?: string | null }) {
+  const g = t.genres ?? [];
+  return g.includes("Familie") || (g.includes("Animation") && ["0", "6"].includes(t.certification_de ?? ""));
+}
 
 export type ImportResult = {
   ok: number; staged: number; failed: number; netflix: number; small: number; origin: number; quality: number; short: number;
@@ -102,7 +110,8 @@ export async function importMovieIds(ids: number[], opts: ImportOpts = {}): Prom
     if (r.status !== "fulfilled") { res.failed++; continue; }
     const t = r.value;
     if (isShortFilm(t)) { res.short++; continue; } // Kurzfilme & Musikvideos: nie, auch nicht bei Preisen
-    if (isNetflix(t.studios)) { res.netflix++; continue; }
+    if (!opts.allowNetflix && isNetflix(t.studios)) { res.netflix++; continue; }
+    if (opts.noKids && isKidsFilm(t)) { res.small++; continue; }
     const awarded = t.oscars.length + t.globes.length > 0;
     if (!awarded && excludedOrigin(t)) { res.origin++; continue; }
     if (opts.onlyMajor && !hasMajorStudio(t.studios)) { res.small++; continue; }
