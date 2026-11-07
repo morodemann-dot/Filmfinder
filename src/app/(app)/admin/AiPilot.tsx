@@ -27,9 +27,20 @@ export default function AiPilot({ status }: { status: AiStatus[] | null }) {
   async function run(model: AiModelKey, already: number) {
     setRunning(model); setError(null); setSkipped(0);
     let done = already;
+    let retries = 0;
     try {
       for (;;) {
-        const r = await aiPilotChunk(model);
+        let r;
+        try {
+          r = await aiPilotChunk(model);
+          retries = 0;
+        } catch (e) {
+          // Kurze Verbindungsabbrüche: automatisch weitermachen (bereits Fertiges bleibt gespeichert)
+          const msg = e instanceof Error ? e.message : String(e);
+          const transient = !/ANTHROPIC|Schlüssel|Guthaben|Ergänzung|Admin|KI-Fehler 4/.test(msg);
+          if (transient && retries < 3) { retries++; await new Promise((ok) => setTimeout(ok, 3000)); continue; }
+          throw transient ? new Error("Verbindung zum Server mehrfach abgebrochen – einfach nochmal starten, Fertiges bleibt erhalten.") : e;
+        }
         done += r.done;
         setProgress((p) => ({ ...p, [model]: done }));
         if (r.errors.length) setSkipped((s) => s + r.errors.length);

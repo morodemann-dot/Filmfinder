@@ -349,7 +349,7 @@ export async function aiPilotStatus(): Promise<AiStatus[] | null> {
   });
 }
 
-// Schätzt die nächsten 6 deiner bewerteten Filme ein. Die Seite ruft das so lange auf, bis alle fertig sind.
+// Schätzt die nächsten paar deiner bewerteten Filme ein (Haiku 6, Sonnet 3 – Sonnet ist langsamer). Die Seite ruft das so lange auf, bis alle fertig sind.
 export async function aiPilotChunk(model: AiModelKey): Promise<{ done: number; remaining: number; errors: string[] }> {
   await requireAdmin();
   if (!(model in AI_MODELS)) throw new Error("Unbekanntes Modell.");
@@ -359,7 +359,7 @@ export async function aiPilotChunk(model: AiModelKey): Promise<{ done: number; r
   if (error) throw new Error(error.message + " (wurde die Ergänzung 13 im SQL Editor ausgeführt?)");
   const done = new Set((have ?? []).map((r) => r.title_id as number));
   const todo = ids.filter((id) => !done.has(id));
-  const batch = todo.slice(0, 6);
+  const batch = todo.slice(0, model === "sonnet" ? 3 : 6);
   if (!batch.length) return { done: 0, remaining: 0, errors: [] };
 
   const { data: films } = await admin.from("titles")
@@ -368,7 +368,7 @@ export async function aiPilotChunk(model: AiModelKey): Promise<{ done: number; r
   const plots = await wikipediaPlots(movies.filter((f) => f.media_type === "movie").map((f) => f.tmdb_id));
 
   const errors: string[] = [];
-  const results = await mapLimit(movies, 3, async (f) => {
+  const results = await mapLimit(movies, 6, async (f) => {
     const plot = f.media_type === "movie" ? plots.get(f.tmdb_id) ?? null : null;
     const r = await rateFilm(model, f, plot);
     const { error: e } = await admin.from("title_features").upsert({

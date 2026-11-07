@@ -14,6 +14,9 @@ import { clearBlocklist, unblockTitle } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
 
+// Server-Aktionen dieser Seite (z. B. KI-Probelauf) dürfen bis zu 60 Sekunden laufen
+export const maxDuration = 60;
+
 // Der Import darf bis zu 60 Sekunden dauern.
 export const maxDuration = 60;
 
