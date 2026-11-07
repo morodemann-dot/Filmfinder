@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { evaluate, kindImpacts, MIN_FOR_TEST, tuneOptions } from "@/lib/evaluate";
 import { KIND_NAMES, type FeatureKind, type RatedTitle } from "@/lib/recommend";
@@ -50,9 +51,15 @@ export default function MesstestView({ rated, variants = [] }: { rated: RatedTit
   });
   const bestAi = aiResults.reduce<(typeof aiResults)[number] | null>((a, b) => (!a || b.tuned.result!.accuracy > a.tuned.result!.accuracy ? b : a), null);
   // Welche Merkmale tragen? (bei vorhandenen KI-Merkmalen mit dem besten Modell; mit Geschmacks-Anteil mind. 1 messen)
-  const base = bestAi ?? { rated, tuned };
-  const probe = { ...base.tuned.opts, tasteWeight: base.tuned.opts.tasteWeight || 1 };
-  const impacts = kindImpacts(base.rated, Object.keys(KIND_NAMES) as FeatureKind[], evaluate(base.rated, probe), probe);
+  // Je Modell eine Spalte (ohne KI-Daten: eine Spalte "Ohne KI")
+  const columns = (aiResults.length ? aiResults : [{ name: "Ohne KI", rated, tuned }]).map((v) => {
+    const probe = { ...v.tuned.opts, tasteWeight: v.tuned.opts.tasteWeight || 1 };
+    const list = kindImpacts(v.rated, Object.keys(KIND_NAMES) as FeatureKind[], evaluate(v.rated, probe), probe);
+    return { name: v.name, delta: new Map(list.map((x) => [x.kind, x.delta])) };
+  });
+  const kinds = (Object.keys(KIND_NAMES) as FeatureKind[])
+    .map((kind) => ({ kind, max: Math.max(...columns.map((c) => c.delta.get(kind) ?? 0)), any: columns.some((c) => (c.delta.get(kind) ?? 0) !== 0) }))
+    .sort((a, b) => b.max - a.max);
   // Unterschiede unter ca. 0,5 Punkten sind bei wenigen Bewertungen Zufall
   const noise = count < 60 ? 0.01 : 0.005;
 
@@ -112,29 +119,41 @@ export default function MesstestView({ rated, variants = [] }: { rated: RatedTit
       )}
 
       <div className="panel" style={{ marginBottom: 14 }}>
-        <div className="eyebrow" style={{ marginBottom: 4 }}>Welche Merkmale helfen bei dir?{bestAi ? ` (mit ${bestAi.name})` : ""}</div>
+        <div className="eyebrow" style={{ marginBottom: 4 }}>Welche Merkmale helfen bei dir?</div>
         <p className="caption" style={{ marginTop: 0 }}>
           Wie viele Prozentpunkte die Treffsicherheit sinkt, wenn die App dieses Merkmal <em>nicht</em> kennt – gemessen an dem, was du anders siehst als die allgemeine Meinung.
-          Kleine Werte (unter {pp(noise).slice(1)}) sind bei {count} Bewertungen noch Zufall.
+          <span style={{ color: "var(--ok)" }}>Grün = hilft</span>, <span style={{ color: "var(--danger)" }}>Rot = stört eher</span>,
+          grau = kaum Wirkung (unter {pp(noise).slice(1)} ist bei {count} Bewertungen noch Zufall).
         </p>
-        <div style={{ display: "grid", gap: 6 }}>
-          {impacts.filter((x) => x.delta !== 0).map(({ kind, delta }) => {
-            const verdict = delta > noise ? "hilft" : delta < -noise ? "stört eher" : "kaum Wirkung";
-            const color = delta > noise ? "var(--ok)" : delta < -noise ? "var(--danger)" : "var(--muted, #8e8e93)";
-            return (
-              <div key={kind} className="row" style={{ justifyContent: "space-between", gap: 10 }}>
-                <span>{KIND_NAMES[kind]}</span>
-                <span className="caption" style={{ color, whiteSpace: "nowrap" }}>{pp(delta)} · {verdict}</span>
-              </div>
-            );
-          })}
+        <div style={{ display: "grid", gridTemplateColumns: `minmax(0, 1fr) repeat(${columns.length}, 56px)`, gap: "6px 10px", alignItems: "baseline" }}>
+          {columns.length > 1 && (
+            <>
+              <span />
+              {columns.map((c) => <span key={c.name} className="eyebrow" style={{ textAlign: "right" }}>{c.name.replace(/ [\d.]+$/, "")}</span>)}
+            </>
+          )}
+          {kinds.filter((k) => k.any).map(({ kind }) => (
+            <Fragment key={kind}>
+              <span>{KIND_NAMES[kind]}</span>
+              {columns.map((c) => {
+                const delta = c.delta.get(kind) ?? 0;
+                const color = delta > noise ? "var(--ok)" : delta < -noise ? "var(--danger)" : "var(--muted)";
+                return <span key={c.name} className="caption" style={{ color, textAlign: "right", whiteSpace: "nowrap" }}>{pp(delta)}</span>;
+              })}
+            </Fragment>
+          ))}
         </div>
-        {impacts.some((x) => x.delta === 0) && (
+        {kinds.some((k) => !k.any) && (
           <p className="caption" style={{ marginBottom: 0 }}>
             Ohne messbare Wirkung (zu wenig Daten oder egal für dich):{" "}
-            {impacts.filter((x) => x.delta === 0).map((x) => KIND_NAMES[x.kind]).join(", ")}
+            {kinds.filter((k) => !k.any).map((k) => KIND_NAMES[k.kind]).join(", ")}
           </p>
         )}
+        <p className="caption" style={{ marginBottom: 0 }}>
+          Gut zu wissen: Ähnliche Merkmale (z. B. Düsternis und Grundstimmung) können sich gegenseitig ersetzen – fällt eines weg,
+          springt das andere ein. Einzeln wirken sie dann klein, obwohl sie zusammen viel ausmachen. Entscheidend ist deshalb die
+          Gesamtzahl oben bei „Stufe 2“.
+        </p>
       </div>
 
       <p className="caption">
