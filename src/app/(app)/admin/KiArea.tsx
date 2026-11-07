@@ -130,13 +130,20 @@ export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro
               <DuelPlay initialCards={cards} answered={duel.answered} />
             </div>
             {retroSlot ?? <RetroBody retro={retro} />}
-            {duel.recent.results.some((r) => r.passt + r.nicht > 0) && (
+            {duel.recent.results.some((r) => r.passt + r.nicht > 0) ? (
               <div>
                 <div className="eyebrow" style={{ marginBottom: 4 }}>Auswertung – gleiche Runden</div>
                 <p className="caption" style={{ marginTop: 0 }}>
                   Nur die Runden, in denen alle drei aktuellen Varianten gleichzeitig angetreten sind – so ist der Vergleich fair.
                 </p>
                 <ResultsTable results={duel.recent.results} />
+              </div>
+            ) : (
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Auswertung – gleiche Runden</div>
+                <p className="caption" style={{ margin: 0 }}>
+                  Neue Aufstellung – die Auswertung erscheint, sobald du die erste Runde mit allen drei Varianten gespielt hast.
+                </p>
               </div>
             )}
             {duel.results.some((r) => r.passt + r.nicht + r.gesehen > 0) && (
