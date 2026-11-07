@@ -6,6 +6,8 @@ import Curate from "./Curate";
 import Suspects from "./Suspects";
 import Review from "./Review";
 import DataStatus, { type DataRow } from "./DataStatus";
+import AiPilot from "./AiPilot";
+import { aiPilotStatus } from "@/app/catalog-actions";
 import { SettingsPanel } from "./SourceForms";
 import { DEFAULT_SETTINGS, getCatalogSettings } from "@/lib/importer";
 import { clearBlocklist, unblockTitle } from "@/app/actions";
@@ -52,6 +54,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           .eq("media_type", "movie").range(from, to),
       ).catch(() => [] as DataRow[])
     : [];
+  const aiStatus = daten ? await aiPilotStatus() : null;
   const tmdbMissing = daten
     ? (await admin.from("titles").select("id", { count: "exact", head: true }).or("vote_count.is.null,keywords.is.null")).count ?? 0
     : 0;
@@ -81,6 +84,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <>
           <Link href="/admin" className="caption">‹ Zurück zu Hinzufügen</Link>
           <h2 style={{ marginTop: 10 }}>Datenlage</h2>
+          <div className="panel" style={{ marginBottom: 14 }}>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>Stufe 2 – Probelauf mit KI</div>
+            <p className="caption" style={{ marginTop: 0 }}>
+              Die KI schätzt für deine bewerteten Filme 15 tiefe Merkmale ein (Stimmung, Tempo, Komplexität, Spannung, Humor,
+              Härte, Grauzonen, offenes Ende, Nachwirkung …). Danach zeigt der Messtest, ob die Vorschläge dadurch treffsicherer werden.
+              Jeder Film wird pro Modell nur einmal eingeschätzt.
+            </p>
+            <AiPilot status={aiStatus} />
+          </div>
           <DataStatus rows={dataRows} tmdbMissing={tmdbMissing} />
         </>
       ) : review ? (

@@ -40,6 +40,7 @@ export type Title = {
   box_office_usd?: number | null;
   nominations?: string[] | null;
   filming_locations?: string[] | null;
+  ai?: import("./aiFeatures").AiFeatures | null; // KI-Merkmale (Stufe 2), nicht in der Tabelle titles
   canon?: string[] | null;
   cast_names?: string[] | null;
   globes?: string[] | null;

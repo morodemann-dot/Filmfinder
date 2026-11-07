@@ -22,7 +22,9 @@ function Row({ label, value, hint, strong }: { label: string; value: number; hin
   );
 }
 
-export default function MesstestView({ rated }: { rated: RatedTitle[] }) {
+export type Variant = { name: string; covered: number; rated: RatedTitle[] };
+
+export default function MesstestView({ rated, variants = [] }: { rated: RatedTitle[]; variants?: Variant[] }) {
   const count = rated.filter((r) => r.status === "gesehen" && r.rating).length;
 
   if (count < MIN_FOR_TEST) {
@@ -41,9 +43,16 @@ export default function MesstestView({ rated }: { rated: RatedTitle[] }) {
   const full = tuned.result!;
   const qualityOnly = evaluate(rated, { ...tuned.opts, tasteWeight: 0 });
   const tasteOnly = evaluate(rated, { ...tuned.opts, qualityWeight: 0, tasteWeight: tuned.opts.tasteWeight || 1 });
-  // Welche Merkmale tragen? (auch wenn der Geschmack gerade abgeschaltet ist, mit Anteil 1 messen)
-  const probe = { ...tuned.opts, tasteWeight: tuned.opts.tasteWeight || 1 };
-  const impacts = kindImpacts(rated, Object.keys(KIND_NAMES) as FeatureKind[], evaluate(rated, probe), probe);
+  // Stufe 2: dieselbe Messung mit KI-Merkmalen je Modell
+  const aiResults = variants.map((v) => {
+    const t = tuneOptions(v.rated);
+    return { ...v, tuned: t, taste: evaluate(v.rated, { ...t.opts, qualityWeight: 0, tasteWeight: t.opts.tasteWeight || 1 }) };
+  });
+  const bestAi = aiResults.reduce<(typeof aiResults)[number] | null>((a, b) => (!a || b.tuned.result!.accuracy > a.tuned.result!.accuracy ? b : a), null);
+  // Welche Merkmale tragen? (bei vorhandenen KI-Merkmalen mit dem besten Modell; mit Geschmacks-Anteil mind. 1 messen)
+  const base = bestAi ?? { rated, tuned };
+  const probe = { ...base.tuned.opts, tasteWeight: base.tuned.opts.tasteWeight || 1 };
+  const impacts = kindImpacts(base.rated, Object.keys(KIND_NAMES) as FeatureKind[], evaluate(base.rated, probe), probe);
   // Unterschiede unter ca. 0,5 Punkten sind bei wenigen Bewertungen Zufall
   const noise = count < 60 ? 0.01 : 0.005;
 
@@ -78,8 +87,32 @@ export default function MesstestView({ rated }: { rated: RatedTitle[] }) {
         </p>
       </div>
 
+      {aiResults.length > 0 && (
+        <div className="panel" style={{ marginBottom: 14 }}>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>Stufe 2 – bringen die KI-Merkmale etwas?</div>
+          <p className="caption" style={{ marginTop: 0 }}>
+            Dieselbe Messung, einmal ohne und einmal mit den KI-Einschätzungen (Stimmung, Tempo, Komplexität …).
+          </p>
+          <div className="cov-grid">
+            <Row label="Ohne KI-Merkmale" value={full.accuracy} hint={`Nur persönlicher Geschmack: ${pct(tasteOnly.accuracy)}`} />
+            {aiResults.map((a) => {
+              const gain = a.tuned.result!.accuracy - full.accuracy;
+              return (
+                <Row key={a.name} label={`Mit KI-Merkmalen (${a.name})`} value={a.tuned.result!.accuracy} strong={a === bestAi && gain > noise}
+                  hint={`${pp(gain)} Punkte · nur persönlicher Geschmack: ${pct(a.taste.accuracy)} · ${a.covered} Filme eingeschätzt`} />
+              );
+            })}
+          </div>
+          <p className="caption" style={{ marginBottom: 0 }}>
+            {bestAi && bestAi.tuned.result!.accuracy - full.accuracy > noise
+              ? `Die KI-Merkmale machen die Vorschläge treffsicherer – am meisten mit ${bestAi.name}.`
+              : "Bisher kein deutlicher Gewinn durch die KI-Merkmale (Unterschiede unter 0,5 Punkten sind Zufall)."}
+          </p>
+        </div>
+      )}
+
       <div className="panel" style={{ marginBottom: 14 }}>
-        <div className="eyebrow" style={{ marginBottom: 4 }}>Welche Merkmale helfen bei dir?</div>
+        <div className="eyebrow" style={{ marginBottom: 4 }}>Welche Merkmale helfen bei dir?{bestAi ? ` (mit ${bestAi.name})` : ""}</div>
         <p className="caption" style={{ marginTop: 0 }}>
           Wie viele Prozentpunkte die Treffsicherheit sinkt, wenn die App dieses Merkmal <em>nicht</em> kennt – gemessen an dem, was du anders siehst als die allgemeine Meinung.
           Kleine Werte (unter {pp(noise).slice(1)}) sind bei {count} Bewertungen noch Zufall.

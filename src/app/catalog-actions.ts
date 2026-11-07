@@ -30,6 +30,7 @@ import {
 } from "@/lib/tmdb";
 import type { CurationCard, CurationFilter, FormState } from "@/app/actions";
 import { wikidataInfo, WIKIDATA_VERSION } from "@/lib/wikidata";
+import { AI_MODELS, costUsd, rateFilm, wikipediaPlots, type AiModelKey, type FilmInput } from "@/lib/aiFeatures";
 
 async function requireAdmin() {
   const user = await getUser();
@@ -317,4 +318,66 @@ export async function enrichWikidataChunk(): Promise<{ done: number; found: numb
   const failed = results.find((r) => r.status === "rejected");
   if (failed && failed.status === "rejected") throw failed.reason;
   return { done: data.length, found: info.size, remaining: Math.max(0, (count ?? 0) - data.length) };
+}
+
+// ---------------- Stufe 2: KI-Merkmale (Probelauf) ----------------
+
+export type AiStatus = { model: AiModelKey; done: number; total: number; costUsd: number };
+
+async function myRatedIds() {
+  const user = await getUser();
+  const rows = await fetchAll<{ title_id: number }>((from, to) =>
+    createAdminClient().from("user_title_feedback").select("title_id")
+      .eq("user_id", user!.id).eq("status", "gesehen").not("rating", "is", null).range(from, to),
+  );
+  return rows.map((r) => r.title_id);
+}
+
+// Stand des Probelaufs je Modell (für die Datenlage-Seite)
+export async function aiPilotStatus(): Promise<AiStatus[] | null> {
+  await requireAdmin();
+  const ids = new Set(await myRatedIds());
+  const res = await fetchAll<{ title_id: number; model: string; input_tokens: number; output_tokens: number }>((from, to) =>
+    createAdminClient().from("title_features").select("title_id,model,input_tokens,output_tokens").range(from, to),
+  ).catch(() => null);
+  if (!res) return null; // Ergänzung 13 fehlt noch
+  return (Object.keys(AI_MODELS) as AiModelKey[]).map((model) => {
+    const rows = res.filter((r) => r.model === model);
+    const inTok = rows.reduce((s, r) => s + r.input_tokens, 0);
+    const outTok = rows.reduce((s, r) => s + r.output_tokens, 0);
+    return { model, done: rows.filter((r) => ids.has(r.title_id)).length, total: ids.size, costUsd: costUsd(model, inTok, outTok) };
+  });
+}
+
+// Schätzt die nächsten 6 deiner bewerteten Filme ein. Die Seite ruft das so lange auf, bis alle fertig sind.
+export async function aiPilotChunk(model: AiModelKey): Promise<{ done: number; remaining: number; errors: string[] }> {
+  await requireAdmin();
+  if (!(model in AI_MODELS)) throw new Error("Unbekanntes Modell.");
+  const admin = createAdminClient();
+  const ids = await myRatedIds();
+  const { data: have, error } = await admin.from("title_features").select("title_id").eq("model", model).limit(10000);
+  if (error) throw new Error(error.message + " (wurde die Ergänzung 13 im SQL Editor ausgeführt?)");
+  const done = new Set((have ?? []).map((r) => r.title_id as number));
+  const todo = ids.filter((id) => !done.has(id));
+  const batch = todo.slice(0, 6);
+  if (!batch.length) return { done: 0, remaining: 0, errors: [] };
+
+  const { data: films } = await admin.from("titles")
+    .select("id,tmdb_id,media_type,title,original_title,release_year,directors,cast_names,genres,overview").in("id", batch);
+  const movies = (films ?? []) as (FilmInput & { id: number; tmdb_id: number; media_type: string })[];
+  const plots = await wikipediaPlots(movies.filter((f) => f.media_type === "movie").map((f) => f.tmdb_id));
+
+  const errors: string[] = [];
+  const results = await mapLimit(movies, 3, async (f) => {
+    const plot = f.media_type === "movie" ? plots.get(f.tmdb_id) ?? null : null;
+    const r = await rateFilm(model, f, plot);
+    const { error: e } = await admin.from("title_features").upsert({
+      title_id: f.id, model, features: r.features, had_plot: !!plot, input_tokens: r.inputTokens, output_tokens: r.outputTokens,
+    });
+    if (e) throw new Error(e.message);
+  });
+  for (const r of results) if (r.status === "rejected") errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason));
+  // Bei grundsätzlichen Fehlern (Schlüssel, Guthaben) sofort abbrechen
+  if (errors.length === results.length) throw new Error(errors[0]);
+  return { done: results.length - errors.length, remaining: todo.length - (results.length - errors.length), errors };
 }

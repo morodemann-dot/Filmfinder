@@ -10,12 +10,20 @@
 // Stufe 2 ergänzt später die tiefen Merkmale (Stimmung, Komplexität, Humor …).
 
 import type { Title } from "./types";
+import { AI_SCALES, type AiScale } from "./aiFeatures";
 
 export type RatedTitle = Title & { rating: number | null; status: string };
 
 export type FeatureKind =
   | "genre" | "regie" | "besetzung" | "reihe" | "jahrzehnt" | "preise"
-  | "subgenre" | "thema" | "drehbuch" | "kamera" | "musik" | "vorlage" | "stil" | "budget";
+  | "subgenre" | "thema" | "drehbuch" | "kamera" | "musik" | "vorlage" | "stil" | "budget"
+  | AiKind;
+
+// KI-Merkmale (Stufe 2): jede Skala ist eine eigene Merkmalsart, damit der Messtest sie einzeln prüfen kann
+export type AiKind = `ki_${AiScale}` | "ki_stimmung" | "ki_humorart" | "ki_struktur";
+const AI_SCALE_KEYS = Object.keys(AI_SCALES) as AiScale[];
+export const AI_KINDS: AiKind[] = [...AI_SCALE_KEYS.map((k) => `ki_${k}` as AiKind), "ki_stimmung", "ki_humorart", "ki_struktur"];
+const aiRecord = <T,>(f: (k: AiKind) => T) => Object.fromEntries(AI_KINDS.map((k) => [k, f(k)])) as Record<AiKind, T>;
 
 // Wie stark eine Merkmalsart zählt (vorläufig, wie in der Spezifikation vorgesehen)
 const KIND_WEIGHT: Record<FeatureKind, number> = {
@@ -33,6 +41,7 @@ const KIND_WEIGHT: Record<FeatureKind, number> = {
   vorlage: 0.3, // basiert auf Buch / Comic / wahrer Person …
   stil: 0.4, // Schwarzweiß
   budget: 0.4, // Großproduktion vs. kleiner Film
+  ...aiRecord(() => 0.5),
 };
 
 // Zu allgemeine Begriffe zählen nicht (sagen nichts über den Geschmack)
@@ -49,6 +58,9 @@ export const KIND_NAMES: Record<FeatureKind, string> = {
   genre: "Genres", regie: "Regie", besetzung: "Besetzung", reihe: "Filmreihen", jahrzehnt: "Jahrzehnt",
   preise: "Preise & Nominierungen", subgenre: "Feine Genres", thema: "Themen & Stichworte", drehbuch: "Drehbuch",
   kamera: "Kamera", musik: "Filmmusik", vorlage: "Vorlage (Buch, Comic …)", stil: "Schwarzweiß", budget: "Budget",
+  ...aiRecord((k) =>
+    k === "ki_stimmung" ? "KI: Grundstimmung" : k === "ki_humorart" ? "KI: Humorart" : k === "ki_struktur" ? "KI: Erzählweise"
+      : `KI: ${AI_SCALES[k.slice(3) as AiScale].name}`),
 };
 
 // Allgemeine Qualität: TMDB-Bewertung, vorsichtig gerechnet.
@@ -100,6 +112,19 @@ function featuresOf(t: Title): Feature[] {
     const b = t.budget_usd;
     const [key, label] = b >= 100e6 ? ["gross", "Großproduktionen"] : b < 20e6 ? ["klein", "Kleinere Produktionen"] : ["mittel", "Mittleres Budget"];
     f.push({ key: `budget:${key}`, kind: "budget", label });
+  }
+  // KI-Merkmale: Skala 0–4 in drei Stufen (wenig / mittel / viel)
+  if (t.ai && t.ai.sicherheit >= 0.3) {
+    for (const k of AI_SCALE_KEYS) {
+      const v = t.ai[k];
+      if (v == null) continue;
+      const lvl = v <= 1 ? "low" : v === 2 ? "mid" : "high";
+      f.push({ key: `ki_${k}:${lvl}`, kind: `ki_${k}`, label: AI_SCALES[k][lvl] });
+    }
+    for (const s of t.ai.stimmung ?? []) f.push({ key: `ki_stimmung:${s}`, kind: "ki_stimmung", label: `Stimmung: ${s}` });
+    for (const h of t.ai.humorarten ?? []) f.push({ key: `ki_humorart:${h}`, kind: "ki_humorart", label: `Humor: ${h}` });
+    for (const s of t.ai.struktur ?? []) if (s !== "chronologisch")
+      f.push({ key: `ki_struktur:${s}`, kind: "ki_struktur", label: `Erzählweise: ${s.replace("_", " ")}` });
   }
   return f;
 }
@@ -182,6 +207,7 @@ const KIND_LABEL: Record<FeatureKind, string> = {
   vorlage: "Vorlage",
   stil: "",
   budget: "",
+  ...aiRecord(() => ""),
   regie: "Regie",
   besetzung: "Mit",
   genre: "Genre",
