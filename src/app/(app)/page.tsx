@@ -4,6 +4,7 @@ import { MIN_RATINGS } from "@/lib/onboarding";
 import PickDeck, { type Pick } from "@/components/PickDeck";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { loadTasteData } from "@/lib/tasteData";
+import { tuneOptions } from "@/lib/evaluate";
 import { buildProfile, recommend, topPreferences, type Recommendation } from "@/lib/recommend";
 import { MOODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
 import { formatRuntime } from "@/lib/types";
@@ -40,7 +41,10 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const user = await getUser();
   const { rated, catalog } = await loadTasteData(supabase, user!.id);
   const seen = new Set(rated.map((r) => r.id));
-  const { prefs, ratedCount } = buildProfile(rated);
+  // Persönliche Mischung aus Qualität und Geschmack – per Messtest an deinen Bewertungen gewählt
+  const { opts } = tuneOptions(rated);
+  const profile = buildProfile(rated, opts);
+  const { prefs, ratedCount } = profile;
 
   if (ratedCount < MIN_RATINGS) {
     return (
@@ -67,7 +71,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
     (t) => !seen.has(t.id) && (!mood || matchesMood(t, mood)) && matchesTime(t, time) &&
       (!surprise || (t.popularity ?? 0) < medianPop),
   );
-  const recs = recommend(candidates, prefs).filter((r) => r.score > 0.1 && r.reasons.length > 0);
+  const recs = recommend(candidates, profile, opts).filter((r) => r.score > 0 && r.reasons.length > 0);
   const DECK = 25; // so viele Vorschläge liegen im Stapel
   const picks: Pick[] = recs.slice(0, DECK).map((r) => ({
     id: r.title.id,

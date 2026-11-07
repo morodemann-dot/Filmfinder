@@ -55,7 +55,6 @@ export const KIND_NAMES: Record<FeatureKind, string> = {
 // Wenige Stimmen werden zum Mittelwert (6,6) hingezogen – 8,5 bei 40 Stimmen zählt kaum.
 const QUALITY_PRIOR = 6.6;
 const QUALITY_VOTES = 800;
-export const QUALITY_WEIGHT = 0.3; // wie stark Qualität neben deinem Geschmack zählt
 export function qualityOf(t: Title): number | null {
   if (t.vote_average == null || !t.vote_count) return null;
   const q = (t.vote_average * t.vote_count + QUALITY_PRIOR * QUALITY_VOTES) / (t.vote_count + QUALITY_VOTES);
@@ -63,12 +62,12 @@ export function qualityOf(t: Title): number | null {
 }
 
 export type ScoreOptions = {
-  qualityWeight?: number; // Standard: QUALITY_WEIGHT
-  tasteWeight?: number; // 0 = Geschmack ignorieren (nur für den Messtest)
+  qualityWeight?: number; // 1 = so stark, wie es zu deinen Bewertungen passt; 0 = ignorieren
+  tasteWeight?: number; // wie stark dein persönlicher Geschmack zählt (wird per Messtest gewählt)
+  shrink?: number; // Vorsicht bei wenigen Belegen (mehr = vorsichtiger)
   skipKinds?: FeatureKind[]; // Merkmalsarten weglassen (nur für den Messtest)
 };
-
-const SHRINK = 2; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
+export const DEFAULT_OPTIONS: Required<Omit<ScoreOptions, "skipKinds">> = { qualityWeight: 1, tasteWeight: 1, shrink: 2 }; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
 
 type Feature = { key: string; kind: FeatureKind; label: string };
 
@@ -121,9 +120,25 @@ export type Recommendation = {
   coverage: number; // wie viele Merkmale des Films wir schon einschätzen können (0–1)
 };
 
-export function buildProfile(rated: RatedTitle[]) {
+// Wie stark folgen deine Punkte der allgemeinen Meinung? (einfache Gerade: Punkte ≈ Schnitt + Steigung × Qualität)
+function fitQuality(withRating: RatedTitle[], mean: number) {
+  const qs = withRating.map((r) => ({ q: qualityOf(r), r: r.rating! })).filter((x) => x.q != null) as { q: number; r: number }[];
+  const qMean = qs.reduce((s, x) => s + x.q, 0) / Math.max(1, qs.length);
+  let sxy = 0, sxx = 0;
+  for (const x of qs) { sxy += (x.q - qMean) * (x.r - mean); sxx += (x.q - qMean) ** 2; }
+  const slope = Math.max(0, Math.min(3, sxx > 0 ? sxy / (sxx + 3) : 0)); // +3 = Vorsicht bei wenigen Filmen
+  return { qMean, slope };
+}
+
+export type Profile = ReturnType<typeof buildProfile>;
+
+export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}) {
+  const shrink = opts.shrink ?? DEFAULT_OPTIONS.shrink;
   const withRating = rated.filter((r) => r.status === "gesehen" && r.rating);
   const mean = withRating.reduce((s, r) => s + r.rating!, 0) / Math.max(1, withRating.length);
+  const { qMean, slope } = fitQuality(withRating, mean);
+  // Was die allgemeine Qualität allein für dich erwarten lässt
+  const expected = (t: Title) => { const q = qualityOf(t); return mean + (q == null ? 0 : slope * (q - qMean)); };
 
   // Beobachtungen sammeln
   const acc = new Map<string, { f: Feature; sumW: number; sumWD: number; n: number; sumR: number }>();
@@ -137,7 +152,9 @@ export function buildProfile(rated: RatedTitle[]) {
     }
   };
   for (const r of rated) {
-    if (r.status === "gesehen" && r.rating) add(r, r.rating - mean, 1, r.rating);
+    // Gelernt wird nur, was von der Erwartung abweicht: Mag jemand Nolan nur, weil Nolan-Filme
+    // allgemein gut sind, ist das schon über die Qualität abgedeckt und zählt hier nicht doppelt.
+    if (r.status === "gesehen" && r.rating) add(r, r.rating - expected(r), 1, r.rating);
     else if (r.status === "nicht_interessiert") add(r, -2, 0.5, null); // schwaches Minus
     else if (r.status === "merkliste") add(r, 1, 0.3, null); // sehr schwaches Plus
   }
@@ -148,12 +165,12 @@ export function buildProfile(rated: RatedTitle[]) {
       key,
       kind: a.f.kind,
       label: a.f.label,
-      pref: a.sumWD / (a.sumW + SHRINK) / 2, // halbiert, damit die Gewichte im gleichen Rahmen bleiben
+      pref: a.sumWD / (a.sumW + shrink) / 2, // halbiert, damit die Gewichte im gleichen Rahmen bleiben
       n: a.n,
       avgScore: a.n ? a.sumR / a.n : null,
     });
   }
-  return { prefs, ratedCount: withRating.length, meanScore: mean };
+  return { prefs, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -180,9 +197,10 @@ function reasonText(p: Preference) {
   return `${head} (${evidence})`;
 }
 
-export function recommend(candidates: Title[], prefs: Map<string, Preference>, opts: ScoreOptions = {}): Recommendation[] {
-  const qw = opts.qualityWeight ?? QUALITY_WEIGHT;
-  const tw = opts.tasteWeight ?? 1;
+export function recommend(candidates: Title[], profile: Profile, opts: ScoreOptions = {}): Recommendation[] {
+  const { prefs } = profile;
+  const qw = (opts.qualityWeight ?? DEFAULT_OPTIONS.qualityWeight) * profile.qualitySlope;
+  const tw = opts.tasteWeight ?? DEFAULT_OPTIONS.tasteWeight;
   const skip = new Set(opts.skipKinds ?? []);
   const out: Recommendation[] = [];
   for (const t of candidates) {
@@ -206,7 +224,7 @@ export function recommend(candidates: Title[], prefs: Map<string, Preference>, o
       for (const p of ps) contrib.push({ p, c: (tw * KIND_WEIGHT[kind] * p.pref) / ps.length });
     }
     const q = qualityOf(t);
-    if (q != null) score += qw * q;
+    if (q != null) score += qw * (q - profile.qMean);
     // Ganz leichter Bonus für bekannte Filme, nur als Gleichstand-Entscheider
     score += Math.log10(1 + (t.popularity ?? 0)) * 0.02;
 
@@ -215,7 +233,7 @@ export function recommend(candidates: Title[], prefs: Map<string, Preference>, o
       .sort((a, b) => b.c - a.c)
       .slice(0, 3)
       .map((x) => reasonText(x.p));
-    if (q != null && qw * q >= 0.25 && reasons.length < 3)
+    if (q != null && q >= 0.8 && qw >= 0.3 && reasons.length < 3)
       reasons.push(`Allgemein sehr gut bewertet (TMDB ${t.vote_average!.toLocaleString("de-DE", { maximumFractionDigits: 1 })})`);
     out.push({ title: t, score, reasons, coverage: known / feats.length });
   }
