@@ -2,6 +2,7 @@ import Link from "next/link";
 import Poster from "@/components/Poster";
 import { MIN_RATINGS } from "@/lib/onboarding";
 import PickDeck, { type Pick } from "@/components/PickDeck";
+import SurpriseMe, { type Surprise } from "@/components/SurpriseMe";
 import FinderFilters, { type FinderFilter } from "@/components/FinderFilters";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { loadSnoozed, loadTasteData } from "@/lib/tasteData";
@@ -201,6 +202,22 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   // 5) Merkliste, passend zu den Filtern
   const watchlist = rated.filter((r) => r.status === "merkliste" && (!mood || matchesMood(r, mood)) && (!sp.genre || (r.genres ?? []).includes(sp.genre)) && matchesTime(r, time));
 
+  // 6) "Überrasch mich": besondere Filme – passen sehr gut, sind richtig gut bewertet und eher unbekannt,
+  //    und stehen nicht schon im Stapel oder bei den Geheimtipps
+  const shownIds = new Set([...inDeck, ...gems.map((g) => g.title.id)]);
+  const special = recs.slice(0, 250)
+    .filter((r) => !shownIds.has(r.title.id) && (r.title.vote_average ?? 0) >= 7 && (r.title.vote_count ?? 0) >= 200)
+    .map((r) => ({ r, s: r.score + 0.15 * ((r.title.vote_average ?? 7) - 7) - 0.1 * Math.log10(1 + (r.title.popularity ?? 0)) }))
+    .sort((a, b) => b.s - a.s).map((x) => x.r);
+  const surprise: Surprise[] = pickDiverse(special, 12).map((r) => ({
+    id: r.title.id,
+    title: r.title.title,
+    poster_path: r.title.poster_path,
+    meta: [r.title.release_year, formatRuntime(r.title.runtime_seconds), r.title.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · "),
+    why: r.reasons.slice(0, 2).join(" · "),
+    rating: r.title.vote_average ?? null,
+  }));
+
   const more = diverse.slice(DECK, DECK + 12);
   const interests = topInterests(profile.interest, 8);
   const learned = topPreferences(prefs, 8);
@@ -214,11 +231,8 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   return (
     <>
       <h1>{mitFriend ? `Was schaut ihr heute?` : "Was soll es heute werden?"}</h1>
-      <p className="caption finder-sub">
-        {mitFriend ? `Für dich und ${mitFriend.name} ausgewählt` : "Für dich ausgewählt"} aus {candidates.length.toLocaleString("de-DE")} passenden Filmen · gelernt aus {ratedCount} Bewertungen
-      </p>
-
       <FinderFilters filters={filters} />
+      <SurpriseMe pool={surprise} />
 
       <div style={{ marginTop: 16 }}>
         {picks.length > 0 ? (

@@ -2,7 +2,7 @@ import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import Welcome from "@/components/Welcome";
 import { ThemeToggle } from "@/components/ThemePicker";
-import { logout } from "@/app/actions";
+import SettingsMenu from "@/components/SettingsMenu";
 import { createClient, getUser, isAdmin } from "@/lib/supabase/server";
 
 // Rahmen für alle Seiten nach der Anmeldung: Kopfzeile oben, Navigation unten.
@@ -22,14 +22,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             Film<span>finder</span>
           </Link>
           <div className="links">
-            {isAdmin(user?.email) && (
-              <Link href="/admin">Katalog</Link>
-            )}
-            <Link href="/ueber">Über</Link>
-            <form action={logout}>
-              <button className="btn ghost" style={{ minHeight: 30, padding: 0, fontSize: "0.85rem" }}>Abmelden</button>
-            </form>
             <ThemeToggle />
+            <SettingsMenu admin={isAdmin(user?.email)} />
           </div>
         </header>
         {children}
