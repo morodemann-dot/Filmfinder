@@ -434,3 +434,4 @@ export async function discoverYear(year: number, sort: "votes" | "rating", page:
   });
   return { ids: d.results.map((r) => r.id), totalPages: d.total_pages };
 }
+

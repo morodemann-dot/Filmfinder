@@ -10,6 +10,8 @@ const COLS =
   "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds,keywords,wd_genres,main_subjects,writers,cinematographers,composers,based_on,vote_average,vote_count,certification_de,festivals,set_in_period,narrative_locations,countries,original_language";
 // Ergänzung 12 (Wikidata) – fehlt sie noch, läuft alles mit den Grundspalten weiter
 const COLS_EXTRA = COLS + ",black_and_white,budget_usd,nominations";
+// Ergänzung 17 (TMDB-Empfehlungen) – fehlt sie, wird ohne geladen
+const COLS_RECS = COLS_EXTRA + ",tmdb_id,tmdb_recs";
 
 type Row = { status: string; rating: number | null; reason?: string | null; aspects?: string[]; favorite?: boolean; titles: Title | null };
 
@@ -85,9 +87,9 @@ export const withAi = <T extends Title>(titles: T[], ai: Map<number, AiFeatures>
   titles.map((t) => ({ ...t, ai: ai?.get(t.id) ?? null }));
 
 export async function loadTasteData(supabase: SupabaseClient, userId: string, withCatalog = true) {
-  const [mine, catalog] = await load(supabase, userId, withCatalog, COLS_EXTRA).catch(() =>
-    load(supabase, userId, withCatalog, COLS),
-  );
+  const [mine, catalog] = await load(supabase, userId, withCatalog, COLS_RECS)
+    .catch(() => load(supabase, userId, withCatalog, COLS_EXTRA))
+    .catch(() => load(supabase, userId, withCatalog, COLS));
   let rated: RatedTitle[] = mine.filter((m) => m.titles).map((m) => ({
     ...m.titles!, rating: m.rating, status: m.status, reason: m.reason ?? null, aspects: m.aspects ?? [], favorite: !!m.favorite,
   }));

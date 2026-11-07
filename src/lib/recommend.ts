@@ -100,6 +100,7 @@ export type ScoreOptions = {
   originWeight?: number; // 4) Herkunftsland, Originalsprache, Studio als Merkmal
   genreQuality?: boolean; // 5) Qualität im Vergleich zum Genre (Horror mit 7,0 ist stark)
   genrePairWeight?: number; // 6) Genre-Kombinationen (Sci-Fi + Drama ≠ Sci-Fi + Action)
+  recWeight?: number; // 9) TMDB-Empfehlungen: "Wer X mochte, mochte auch Y" (0 = aus)
   swipeWeight?: number; // 8) Merkliste / "Kein Interesse" stärker zählen (1 = wie bisher)
   duelWeight?: number; // 7) Duell-Antworten zu unbekannten Filmen (passt / passt nicht) als Lernstoff
   qualityWeight?: number; // 1 = so stark, wie es zu deinen Bewertungen passt; 0 = ignorieren
@@ -239,6 +240,16 @@ function interestWeightOf(r: RatedTitle, byRating: boolean, duelWeight = 0, swip
   return w;
 }
 
+// 9) Wie stark ein Eintrag für die TMDB-Empfehlungen zählt (+ = mochtest du, − = eher nicht)
+function recSignal(r: RatedTitle) {
+  let w = 0;
+  if (r.status === "gesehen" && r.rating) { const x = r.rating; w = x >= 9 ? 1.6 : x >= 8 ? 1.3 : x >= 7 ? 1 : x >= 6 ? 0.4 : x >= 5 ? -0.2 : -1; }
+  else if (r.status === "merkliste" || r.status === DUEL_YES) w = 0.6;
+  else if (r.status === "nicht_interessiert" || r.status === DUEL_NO) w = -0.6;
+  if (r.favorite) w = Math.max(w, 2);
+  return w;
+}
+
 export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: ScoreOptions = {}) {
   const catCount = new Map<string, number>();
   for (const t of catalog) for (const f of new Set(featuresOf(t).map((x) => x.key))) catCount.set(f, (catCount.get(f) ?? 0) + 1);
@@ -355,6 +366,24 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     anchorsNeg = rated.filter((r) => r.status === "gesehen" && r.rating != null && r.rating <= 4).slice(0, 80).map((r) => simVector(r));
   }
 
+  // 9) TMDB-Empfehlungen: Was empfiehlt TMDB zu Filmen, die du magst (oder nicht magst)?
+  const recFwd = new Map<number, { sum: number; best: { t: Title; c: number } | null }>();
+  const recUser = new Map<number, number>();
+  if (opts.recWeight) {
+    for (const r of rated) {
+      const w = recSignal(r);
+      if (!w || !r.tmdb_id) continue;
+      recUser.set(r.tmdb_id, w);
+      (r.tmdb_recs ?? []).forEach((rid, i) => {
+        const c = w * (1 - i / 25); // die ersten Empfehlungen zählen mehr
+        const x = recFwd.get(rid) ?? { sum: 0, best: null };
+        x.sum += c;
+        if (c > 0 && (!x.best || c > x.best.c)) x.best = { t: r, c };
+        recFwd.set(rid, x);
+      });
+    }
+  }
+
   // 5) Qualität je Genre: Durchschnitt pro Hauptgenre im Katalog (vorsichtig gemittelt)
   const genreQ = new Map<string, number>();
   if (opts.genreQuality && catalog?.length) {
@@ -371,7 +400,7 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     const avg = n ? all / n : 0;
     for (const [g, x] of sums) genreQ.set(g, ((x.s / x.n) - avg) * (x.n / (x.n + 30)));
   }
-  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, genreQ, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
+  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, genreQ, recFwd, recUser, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -557,6 +586,16 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
       for (const a of profile.anchorsNeg) neg = Math.max(neg, similarity(v, a));
       score += sw * ((similarTo?.s ?? 0) - 0.6 * neg);
     }
+    // 9) TMDB-Empfehlungen: in beide Richtungen (dein Film empfiehlt diesen / dieser empfiehlt deinen)
+    let recFrom: { t: Title; c: number } | null = null;
+    const rw = opts.recWeight ?? 0;
+    if (rw && t.tmdb_id && (profile.recFwd?.size || profile.recUser?.size)) {
+      const fwd = profile.recFwd.get(t.tmdb_id);
+      let raw = fwd?.sum ?? 0;
+      recFrom = fwd?.best ?? null;
+      (t.tmdb_recs ?? []).forEach((rid, i) => { const u = profile.recUser.get(rid); if (u) raw += 0.7 * u * (1 - i / 25); });
+      score += rw * Math.sign(raw) * Math.log1p(Math.abs(raw));
+    }
     // Ganz leichter Bonus für bekannte Filme, nur als Gleichstand-Entscheider
     score += Math.log10(1 + (t.popularity ?? 0)) * 0.02;
 
@@ -568,6 +607,8 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
     if (topInterest && reasons.length < 3) reasons.unshift(interestText(topInterest));
     if (similarTo && similarTo.s >= 0.35 && reasons.length < 3)
       reasons.unshift(`Ähnlich wie „${similarTo.t.title}“${similarTo.fav ? " – einer deiner Lieblingsfilme" : ""}`);
+    if (recFrom && recFrom.c >= 1 && reasons.length < 3 && !(similarTo && similarTo.t.id === recFrom.t.id && similarTo.s >= 0.35))
+      reasons.unshift(`Wer „${recFrom.t.title}“ mochte, mochte auch diesen`);
     if (q != null && q >= 0.8 && qw >= 0.3 && reasons.length < 3)
       reasons.push(`Allgemein sehr gut bewertet (TMDB ${t.vote_average!.toLocaleString("de-DE", { maximumFractionDigits: 1 })})`);
     out.push({ title: t, score, reasons, coverage: known / feats.length });

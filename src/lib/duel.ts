@@ -48,6 +48,11 @@ export const ALL_SOURCES: SourceDef[] = [
   // 8) Merkliste / Kein Interesse stärker (hilft allen, die kein Duell machen)
   { key: "sw2", name: "+ 8 Merkliste/Kein Interesse ×2", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2 } },
   { key: "sw4", name: "+ 8 Merkliste/Kein Interesse ×4", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 4 } },
+  // 9) TMDB-Empfehlungen ("Wer X mochte, mochte auch Y") – zusätzlich zur neuesten App
+  { key: "r1", name: "+ 9 TMDB-Empfehlungen (leicht)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 0.15 } },
+  { key: "r2", name: "+ 9 TMDB-Empfehlungen", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 0.3 } },
+  { key: "r3", name: "+ 9 TMDB-Empfehlungen (stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 0.6 } },
+  { key: "r4", name: "+ 9 TMDB-Empfehlungen (sehr stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 1.2 } },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 
@@ -61,7 +66,7 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Ab Nov. 2026 (Runde mit Duell-Lernen): App mit Duell-Antworten vs. vorherige App vs. alte App
 export const DUEL_SOURCES: SourceDef[] = [byKey("d4"), byKey("vall"), byKey("i1_q05")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
-export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "d1", "d4", "d8", "sw2", "sw4"].map(byKey);
+export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "d4", "sw2", "sw4", "r1", "r2", "r3", "r4"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
 export const sourceName = (k: string) => ALL_SOURCES.find((s) => s.key === k)?.name ?? k;
 

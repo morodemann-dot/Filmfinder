@@ -1,5 +1,6 @@
 import RefreshButton from "@/components/RefreshButton";
 import WikidataButton from "@/components/WikidataButton";
+import RecsButton from "@/components/RecsButton";
 import { WIKIDATA_VERSION } from "@/lib/wikidata";
 
 // "Datenlage": Wie gut sind die Filme beschrieben – und was fehlt noch für Stufe 2?
@@ -97,6 +98,10 @@ export default function DataStatus({ rows, tmdbMissing }: { rows: DataRow[]; tmd
           <div>
             <p className="caption" style={{ marginTop: 0 }}>Wikidata: basiert auf, Handlungsort, Zeit, Hauptthema, feine Genres, Schwarzweiß, Budget, Einspielergebnis, Nominierungen, Drehorte – noch nicht (neu) geprüft: {wdMissing} Filme.</p>
             {wdMissing > 0 ? <WikidataButton missing={wdMissing} /> : <p className="success">Alles geprüft.</p>}
+          </div>
+          <div>
+            <p className="caption" style={{ marginTop: 0 }}>TMDB-Empfehlungen: „Wer diesen Film mochte, mochte auch …“ – je Film die 20 stärksten.</p>
+            <RecsButton />
           </div>
         </div>
       </div>

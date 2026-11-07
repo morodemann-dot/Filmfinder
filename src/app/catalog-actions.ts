@@ -322,6 +322,43 @@ export async function enrichWikidataChunk(): Promise<{ done: number; found: numb
   return { done: data.length, found: info.size, remaining: Math.max(0, (count ?? 0) - data.length) };
 }
 
+// ---------------- TMDB-Empfehlungen ("Wer X mochte, mochte auch …") ----------------
+
+// Wie viele Filme haben noch keine Empfehlungen? null = Ergänzung 17 fehlt
+export async function recsStatus(): Promise<{ missing: number; total: number } | null> {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const [m, t] = await Promise.all([
+    admin.from("titles").select("id", { count: "exact", head: true }).eq("media_type", "movie").is("recs_checked_at", null),
+    admin.from("titles").select("id", { count: "exact", head: true }).eq("media_type", "movie"),
+  ]);
+  if (m.error) return null;
+  return { missing: m.count ?? 0, total: t.count ?? 0 };
+}
+
+// Holt für bis zu 80 Filme die TMDB-Empfehlungen. Die Seite ruft das so lange auf, bis nichts mehr fehlt.
+export async function enrichRecsChunk(): Promise<{ done: number; remaining: number; failed: number; error?: string }> {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const { data, error, count } = await admin
+    .from("titles").select("id,tmdb_id", { count: "exact" })
+    .eq("media_type", "movie").is("recs_checked_at", null).limit(80);
+  if (error) return { done: 0, remaining: 0, failed: 0, error: error.message + " (wurde die Ergänzung 17 im SQL Editor ausgeführt?)" };
+  if (!data?.length) return { done: 0, remaining: 0, failed: 0 };
+  const now = new Date().toISOString();
+  const results = await mapLimit(data, 8, async (t) => {
+    const recs = await recommendations(t.tmdb_id as number);
+    const { error: e } = await admin.from("titles").update({ tmdb_recs: recs, recs_checked_at: now }).eq("id", t.id);
+    if (e) throw new Error(e.message);
+  });
+  const failed = results.filter((r) => r.status === "rejected");
+  // Fehlgeschlagene als geprüft (leer) markieren, damit es nicht hängen bleibt – außer bei Ratenbegrenzung
+  const firstErr = failed[0]?.status === "rejected" ? String((failed[0] as PromiseRejectedResult).reason?.message ?? failed[0].reason) : undefined;
+  if (failed.length === data.length && firstErr) return { done: 0, remaining: count ?? 0, failed: failed.length, error: firstErr };
+  invalidateCatalogCache();
+  return { done: data.length - failed.length, remaining: Math.max(0, (count ?? 0) - data.length + failed.length), failed: failed.length, error: firstErr };
+}
+
 // ---------------- Stufe 2: KI-Merkmale (Probelauf) ----------------
 
 export type AiScope = "rated" | "test"; // deine bewerteten Filme | Testfilme fürs Modell-Duell

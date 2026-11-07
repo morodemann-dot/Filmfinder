@@ -262,3 +262,6 @@ create policy "Eigenes Profil" on public.profiles for all to authenticated
 notify pgrst, 'reload schema';
 alter table public.user_title_feedback add column if not exists favorite boolean not null default false;
 notify pgrst, 'reload schema';
+alter table public.titles add column if not exists tmdb_recs integer[];          -- TMDB-IDs der empfohlenen Filme (beste zuerst)
+alter table public.titles add column if not exists recs_checked_at timestamptz;  -- wann zuletzt abgeholt
+notify pgrst, 'reload schema';

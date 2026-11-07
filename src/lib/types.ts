@@ -2,6 +2,7 @@ export type Title = {
   id: number;
   media_type: "movie" | "tv";
   tmdb_id: number;
+  tmdb_recs?: number[] | null; // Ergänzung 17: TMDB-Empfehlungen (TMDB-IDs)
   title: string;
   original_title: string | null;
   format: string | null;
