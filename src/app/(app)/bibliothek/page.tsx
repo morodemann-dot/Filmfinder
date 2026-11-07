@@ -3,6 +3,7 @@ import TitleCard from "@/components/TitleCard";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { STATUS_LABEL, formatScore, type Status, type Title } from "@/lib/types";
 import ProfilePanel from "@/components/ProfilePanel";
+import ThemePicker from "@/components/ThemePicker";
 
 // Persönliche Bibliothek: alles, was du schon eingeordnet hast.
 
@@ -55,6 +56,11 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           : "Hier ist noch nichts. Leg los unter „Bewerten“."}</div>
       )}
       <ProfilePanel name={profile?.display_name ?? ""} share={!!profile?.share_together} ready={!profileError} />
+      <section className="panel" style={{ marginTop: 16 }}>
+        <h2 style={{ margin: "0 0 4px" }}>Darstellung</h2>
+        <p className="caption" style={{ margin: "0 0 10px" }}>„Automatisch“ folgt der Einstellung deines iPhones.</p>
+        <ThemePicker />
+      </section>
     </>
   );
 }

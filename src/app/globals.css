@@ -530,3 +530,37 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 }
 .nav a[aria-current="page"] svg { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 45%, transparent)); }
 .question-sheet { bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); }
+
+/* ---------- Bewerten: kompakt, ohne Scrollen ---------- */
+.quick-poster { position: relative; width: min(190px, 25vh); margin: 0 auto 10px; }
+.quick-poster .poster { width: 100% !important; margin: 0 !important; }
+.quick .quick-poster .flash { width: 100%; }
+.quick-fav {
+  position: absolute; top: 8px; right: 8px; width: 38px; height: 38px; border-radius: 999px; display: grid; place-items: center;
+  font-size: 1.25rem; color: #fff; cursor: pointer;
+  background: rgba(0, 0, 0, 0.35); border: 0.5px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.quick-fav.on { color: #ff375f; background: rgba(255, 255, 255, 0.9); }
+.quick-fav:active { transform: scale(0.9); }
+.quick h2 { margin: 4px 0 2px; }
+.quick-acts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 12px; }
+.qa {
+  display: grid; justify-items: center; gap: 4px; padding: 8px 2px; border-radius: 14px; border: 0.5px solid var(--line);
+  background: var(--surface); color: var(--muted); font: inherit; font-size: 0.72rem; line-height: 1.15; cursor: pointer;
+}
+.qa-icon { font-size: 1.05rem; color: var(--text); font-weight: 700; }
+.qa-icon.keep { color: var(--ok); }
+.qa-icon.remove { color: var(--danger); }
+.qa.on { border-color: var(--accent); color: var(--text); }
+.qa:active { transform: scale(0.95); }
+.scale-help { text-align: left; margin: 0 0 4px; }
+.scale-help summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); text-align: center; padding: 6px; }
+.scale { padding: 10px 2px 4px; display: grid; gap: 12px; }
+.scale-bar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+.scale-bar span { height: 26px; border-radius: 6px; display: grid; place-items: center; font-weight: 700; font-size: 0.8rem; color: #000; }
+.scale-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 0.85rem; }
+.scale-list li { display: grid; grid-template-columns: 42px 1fr; gap: 6px; align-items: baseline; }
+.scale-num { font-weight: 700; text-align: center; }
+.scale-list.other { border-top: 0.5px solid var(--line); padding-top: 10px; color: var(--muted); }
+.scale-list.other strong { color: var(--text); }

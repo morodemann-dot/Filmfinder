@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Poster from "@/components/Poster";
 import Score, { SCORE_LABEL, scoreColor } from "@/components/Score";
+import ScaleHelp from "@/components/ScaleHelp";
 import { saveAspects, saveFeedbackQuiet as setFeedback, setFavorite, snoozeTitle } from "@/app/actions";
 import { AspectSheet, ReasonSheet } from "@/components/QuestionSheet";
 import { shouldAskAspects, type ReasonKey } from "@/lib/aspects";
@@ -157,10 +158,21 @@ export default function QuickRate({
         })()}
       </div>
 
-      <div style={{ position: "relative" }}>
+      <div className="quick-poster">
         <a href={`/titel/${t.id}`} aria-label={`Details zu ${t.title}`}>
           <Poster path={t.poster_path} title={t.title} size="w500" />
         </a>
+        {/* Lieblingsfilm: Herz direkt am Plakat */}
+        <button className={`quick-fav ${favs.has(t.id) ? "on" : ""}`} aria-pressed={favs.has(t.id)}
+          aria-label={favs.has(t.id) ? "Lieblingsfilm – antippen zum Entfernen" : "Als Lieblingsfilm markieren"}
+          onClick={() => {
+            const on = !favs.has(t.id);
+            setFavs((f) => { const n = new Set(f); if (on) n.add(t.id); else n.delete(t.id); return n; });
+            const after = saving.current.get(t.id) ?? Promise.resolve();
+            saving.current.set(t.id, after.then(() => setFavorite(t.id, on)).catch(() => setError("Lieblingsfilm konnte nicht gespeichert werden (Ergänzung 16?).")));
+          }}>
+          <span aria-hidden>{favs.has(t.id) ? "♥" : "♡"}</span>
+        </button>
         {flash && (
           <div className="flash">
             {flash.rating ? (
@@ -176,43 +188,37 @@ export default function QuickRate({
       </div>
 
       <h2><span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span></h2>
-      <div className="caption quick-because">
+      <div className="caption quick-meta">
         {current && !flash
           ? <span className="muted">Bereits beantwortet – neue Auswahl überschreibt</span>
-          : because[t.id] ? <>Weil du „{because[t.id]}“ gesehen hast</> : null}
-      </div>
-      <div className="caption quick-meta">
-        {[t.format, t.release_year, t.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
+          : because[t.id] ? <>Weil du „{because[t.id]}“ gesehen hast</>
+            : [t.format, t.release_year, t.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
       </div>
 
-      <div style={{ margin: "16px 0 14px" }}>
-        <Score
-          value={shown?.status === "gesehen" ? shown.rating : null}
-          onChange={(r) => answer("gesehen", r)}
-          hint={
-            <button type="button" className="linkish" onClick={() => answer("gesehen")}>
-              Gesehen, aber ohne Bewertung
-            </button>
-          }
-        />
+      <div style={{ margin: "12px 0 10px" }}>
+        <Score value={shown?.status === "gesehen" ? shown.rating : null} onChange={(r) => answer("gesehen", r)} hint="Gesehen? Tippe eine Zahl an." />
       </div>
 
-      <div style={{ margin: "-4px 0 14px" }}>
-        <button className={`fav-toggle ${favs.has(t.id) ? "on" : ""}`} aria-pressed={favs.has(t.id)} onClick={() => {
-          const on = !favs.has(t.id);
-          setFavs((f) => { const n = new Set(f); if (on) n.add(t.id); else n.delete(t.id); return n; });
-          const after = saving.current.get(t.id) ?? Promise.resolve();
-          saving.current.set(t.id, after.then(() => setFavorite(t.id, on)).catch(() => setError("Lieblingsfilm konnte nicht gespeichert werden (Ergänzung 16?).")));
-        }}>
-          <span aria-hidden>{favs.has(t.id) ? "♥" : "♡"}</span> {favs.has(t.id) ? "Lieblingsfilm" : "Lieblingsfilm? Antippen"}
+      {/* Alle anderen Antworten in einer Reihe */}
+      <div className="quick-acts">
+        <button className={`qa ${shown?.status === "gesehen" && !shown.rating ? "on" : ""}`} onClick={() => answer("gesehen")}>
+          <span className="qa-icon" aria-hidden>✓</span>Gesehen,<br />ohne Punkte
+        </button>
+        <button className={`qa ${shown?.status === "nicht_gesehen" ? "on" : ""}`} onClick={() => answer("nicht_gesehen")}>
+          <span className="qa-icon" aria-hidden>»</span>Nicht<br />gesehen
+        </button>
+        <button className={`qa ${shown?.status === "merkliste" ? "on" : ""}`} onClick={() => answer("merkliste")}>
+          <span className="qa-icon keep" aria-hidden>+</span>Merk-<br />liste
+        </button>
+        <button className={`qa ${shown?.status === "nicht_interessiert" ? "on" : ""}`} onClick={() => answer("nicht_interessiert")}>
+          <span className="qa-icon remove" aria-hidden>✕</span>Kein<br />Interesse
         </button>
       </div>
 
-      <div className="row">
-        <button className={`btn ${shown?.status === "nicht_gesehen" ? "active" : ""}`} onClick={() => answer("nicht_gesehen")}>Nicht gesehen</button>
-        <button className={`btn ${shown?.status === "merkliste" ? "active" : ""}`} onClick={() => answer("merkliste")}>Merkliste</button>
-        <button className={`btn ${shown?.status === "nicht_interessiert" ? "active" : ""}`} onClick={() => answer("nicht_interessiert")}>Kein Interesse</button>
-      </div>
+      <details className="scale-help">
+        <summary>So bewertest du</summary>
+        <ScaleHelp />
+      </details>
       <label className="detail-toggle">
         <input type="checkbox" checked={detail} onChange={(e) => setDetail(e.target.checked)} />
         <span>

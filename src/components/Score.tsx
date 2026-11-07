@@ -7,12 +7,12 @@ export const SCORE_LABEL: Record<number, string> = {
   1: "Katastrophe",
   2: "Sehr schlecht",
   3: "Schlecht",
-  4: "Mäßig",
-  5: "Durchschnitt",
-  6: "Ganz okay",
-  7: "Gut",
+  4: "Eher schlecht",
+  5: "Okay",
+  6: "Ganz okay, nur noch gut",
+  7: "Gut & unterhaltsam",
   8: "Sehr gut",
-  9: "Herausragend",
+  9: "Top",
   10: "Meisterwerk",
 };
 
