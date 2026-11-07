@@ -130,34 +130,25 @@ export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro
               <DuelPlay initialCards={cards} answered={duel.answered} />
             </div>
             {retroSlot ?? <RetroBody retro={retro} />}
-            {duel.results.some((r) => r.passt + r.nicht + r.gesehen > 0) && (
+            {duel.recent.results.some((r) => r.passt + r.nicht > 0) && (
               <div>
-                <div className="eyebrow" style={{ marginBottom: 8 }}>Auswertung</div>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 50px 50px 50px 62px", gap: "8px 8px", alignItems: "baseline" }}>
-                  <span />
-                  <span className="eyebrow" style={{ textAlign: "right" }}>Passt</span>
-                  <span className="eyebrow" style={{ textAlign: "right" }}>Nicht</span>
-                  <span className="eyebrow" style={{ textAlign: "right" }}>Ges.</span>
-                  <span className="eyebrow" style={{ textAlign: "right" }}>Treffer</span>
-                  {duel.results.map((r) => {
-                    const judged = r.passt + r.nicht;
-                    return (
-                      <Fragment key={r.source}>
-                        <span>{r.name}</span>
-                        <span style={{ textAlign: "right" }}>{r.passt}</span>
-                        <span style={{ textAlign: "right" }}>{r.nicht}</span>
-                        <span className="caption" style={{ textAlign: "right" }}>{r.gesehen}</span>
-                        <span style={{ textAlign: "right", fontWeight: 700 }}>{judged ? pct(r.passt / judged) : "–"}</span>
-                      </Fragment>
-                    );
-                  })}
-                </div>
-                <p className="caption">
-                  Treffer = Anteil der Vorschläge, die zu dir passen („schon gesehen“ zählt nicht mit). Ab etwa 20 bewerteten
-                  Vorschlägen pro Variante wird der Vergleich aussagekräftig – also lieber 2–3 Runden machen.
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Auswertung – gleiche Runden</div>
+                <p className="caption" style={{ marginTop: 0 }}>
+                  Nur die Runden, in denen alle drei aktuellen Varianten gleichzeitig angetreten sind – so ist der Vergleich fair.
                 </p>
+                <ResultsTable results={duel.recent.results} />
               </div>
             )}
+            {duel.results.some((r) => r.passt + r.nicht + r.gesehen > 0) && (
+              <details>
+                <summary className="caption" style={{ cursor: "pointer" }}>Alle Runden seit Beginn ›</summary>
+                <div style={{ marginTop: 10 }}><ResultsTable results={duel.results} /></div>
+              </details>
+            )}
+            <p className="caption" style={{ margin: 0 }}>
+              Treffer = Anteil der Vorschläge, die zu dir passen („schon gesehen“ zählt nicht mit). Bei der <strong>Gegenprobe</strong> ist es
+              umgekehrt: Treffer = die App hat richtig vorhergesagt, dass der Film <em>nicht</em> passt. Ab etwa 20 bewerteten Karten pro Zeile wird es aussagekräftig.
+            </p>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <span />
               <ResetButton />
@@ -290,3 +281,30 @@ export const KiCompareSlot = ({ userId, statusRated }: { userId: string; statusR
   <Suspense fallback={<Loading what="Der Vergleich" />}><CompareSection userId={userId} statusRated={statusRated} /></Suspense>;
 export const KiRetroSlot = ({ userId }: { userId: string }) =>
   <Suspense fallback={<Loading what="Der nachträgliche Test" />}><RetroSection userId={userId} /></Suspense>;
+
+// Auswertungstabelle – bei der Gegenprobe zählt "passt nicht" als Treffer
+function ResultsTable({ results }: { results: { source: string; name: string; passt: number; nicht: number; gesehen: number }[] }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 46px 46px 40px 58px", gap: "8px 8px", alignItems: "baseline" }}>
+      <span />
+      <span className="eyebrow" style={{ textAlign: "right" }}>Passt</span>
+      <span className="eyebrow" style={{ textAlign: "right" }}>Nicht</span>
+      <span className="eyebrow" style={{ textAlign: "right" }}>Ges.</span>
+      <span className="eyebrow" style={{ textAlign: "right" }}>Treffer</span>
+      {results.map((r) => {
+        const judged = r.passt + r.nicht;
+        const neg = r.source === "probe-neg";
+        const probe = r.source.startsWith("probe-");
+        return (
+          <Fragment key={r.source}>
+            <span className={probe ? "caption" : undefined} style={probe ? { fontStyle: "italic" } : undefined}>{r.name}</span>
+            <span style={{ textAlign: "right" }}>{r.passt}</span>
+            <span style={{ textAlign: "right" }}>{r.nicht}</span>
+            <span className="caption" style={{ textAlign: "right" }}>{r.gesehen}</span>
+            <span style={{ textAlign: "right", fontWeight: 700 }}>{judged ? pct((neg ? r.nicht : r.passt) / judged) : "–"}</span>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}

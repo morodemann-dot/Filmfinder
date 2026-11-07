@@ -20,11 +20,17 @@ async function requireAdminUser() {
 const POOL_SIZE = 100;
 const PICKS_PER_ROUND = 10;
 
-type DuelRow = { title_id: number; picked_by: string[]; answer: string | null };
+type DuelRow = { title_id: number; picked_by: string[]; answer: string | null; answered_at: string | null };
+
+// Gegenproben: Karten, bei denen die neue App "passt nicht" (bzw. "unentschieden") vorhersagt
+const PROBES = [
+  { key: "probe-neg", name: "Gegenprobe: App sagt „passt nicht“" },
+  { key: "probe-mid", name: "Mitte: App ist unentschieden" },
+];
 
 async function duelRows(userId: string) {
   return fetchAll<DuelRow>((from, to) =>
-    createAdminClient().from("ai_duel").select("title_id,picked_by,answer").eq("user_id", userId).range(from, to),
+    createAdminClient().from("ai_duel").select("title_id,picked_by,answer,answered_at").eq("user_id", userId).range(from, to),
   );
 }
 
@@ -79,14 +85,33 @@ export async function duelStartRound(): Promise<{ cards: number; sources: string
     const sources = active.map((s) => s.key);
 
     const picks = new Map<number, Set<string>>();
+    let mainRanked: ReturnType<typeof rankWith> = [];
     for (const src of active) {
+      const ranked = rankWith(src, rated, catalog, ai, fair);
+      if (src === active[0]) mainRanked = ranked;
       // Abwechslung: weitere Filme derselben Reihe/Regie bekommen einen kleinen Abzug
-      const best = pickDiverse(rankWith(src, rated, catalog, ai, fair), PICKS_PER_ROUND);
+      const best = pickDiverse(ranked, PICKS_PER_ROUND);
       for (const { title: t } of best) {
         if (!picks.has(t.id)) picks.set(t.id, new Set());
         picks.get(t.id)!.add(src.key);
       }
     }
+    // Gegenprobe: 3 Filme, die die neue App weit unten sieht (untere 15 %), und 2 aus der Mitte – nur
+    // bekanntere Filme (ab 1.500 Stimmen), damit man sie einschätzen kann
+    const judgeable = mainRanked.filter((r) => (r.title.vote_count ?? 0) >= 1500 && !picks.has(r.title.id));
+    const n = judgeable.length;
+    const draw = (list: typeof judgeable, k: number, key: string) => {
+      const copy = [...list];
+      for (let i = 0; i < k && copy.length; i++) {
+        const [r] = copy.splice(Math.floor(Math.random() * copy.length), 1);
+        picks.set(r.title.id, new Set([key]));
+      }
+    };
+    if (n >= 40) {
+      draw(judgeable.slice(Math.floor(n * 0.85)), 3, "probe-neg");
+      draw(judgeable.slice(Math.floor(n * 0.45), Math.floor(n * 0.55)), 2, "probe-mid");
+    }
+
     const admin = createAdminClient();
     // alles in zwei Schritten speichern (statt jeden Film einzeln)
     await admin.from("ai_duel").update({ picked_by: [] }).eq("user_id", user.id).is("answer", null);
@@ -139,12 +164,14 @@ export async function duelAnswers(): Promise<Map<number, boolean>> {
 }
 
 // 4) Auswertung: Wie viele Vorschläge jeder Quelle haben gepasst?
-export async function duelResults(): Promise<{ pool: number; answered: number; results: DuelResult[] } | null> {
+export async function duelResults(): Promise<{
+  pool: number; answered: number; results: DuelResult[]; recent: { since: string | null; results: DuelResult[] };
+} | null> {
   const user = await requireAdminUser();
   const rows = await duelRows(user.id).catch(() => null);
   if (!rows) return null;
-  const results = ALL_SOURCES.map(({ key: source, name }) => {
-    const mine = rows.filter((r) => r.picked_by.includes(source));
+  const tally = (list: DuelRow[], sources: { key: string; name: string }[]) => sources.map(({ key: source, name }) => {
+    const mine = list.filter((r) => r.picked_by.includes(source));
     return {
       source,
       name,
@@ -154,7 +181,19 @@ export async function duelResults(): Promise<{ pool: number; answered: number; r
       offen: mine.filter((r) => !r.answer).length,
     };
   }).filter((r) => r.passt + r.nicht + r.gesehen + r.offen > 0);
-  return { pool: rows.length, answered: rows.filter((r) => r.answer).length, results };
+
+  // Fairer Vergleich: nur Runden, in denen ALLE aktuellen Varianten antreten
+  // (ab dem Zeitpunkt, zu dem die zuletzt hinzugekommene Variante zum ersten Mal beantwortet wurde)
+  const firstAnswer = (key: string) => rows.filter((r) => r.picked_by.includes(key) && r.answered_at).map((r) => r.answered_at!).sort()[0] ?? null;
+  const starts = DUEL_SOURCES.map((s) => firstAnswer(s.key));
+  const since = starts.every(Boolean) ? starts.sort().at(-1)! : null;
+  const recentRows = since ? rows.filter((r) => r.answered_at && r.answered_at >= since) : [];
+  return {
+    pool: rows.length,
+    answered: rows.filter((r) => r.answer).length,
+    results: tally(rows, [...ALL_SOURCES, ...PROBES]),
+    recent: { since, results: tally(recentRows, [...DUEL_SOURCES, ...PROBES]) },
+  };
 }
 
 // Alles zurücksetzen (Testfilme und Antworten; die KI-Einschätzungen bleiben gespeichert)
