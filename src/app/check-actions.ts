@@ -65,12 +65,16 @@ export async function checkStart(): Promise<{ cards: number; error?: string }> {
     const taken = new Set(top.map((r) => r.title.id));
     const middle = recs.slice(Math.floor(recs.length * 0.15), Math.floor(recs.length * 0.5)).filter((r) => !taken.has(r.title.id));
     for (let i = middle.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [middle[i], middle[j]] = [middle[j], middle[i]]; }
-    const ids = [...top, ...pickDiverse(middle, need - top.length)].map((r) => r.title.id);
+    // Gekennzeichnet, damit sich später messen lässt, wie gut die Top-Vorschläge passen
+    const rowsNew = [
+      ...top.map((r) => ({ user_id: user.id, title_id: r.title.id, picked_by: ["check", "check-top"] })),
+      ...pickDiverse(middle, need - top.length).map((r) => ({ user_id: user.id, title_id: r.title.id, picked_by: ["check", "check-mid"] })),
+    ];
 
     const { error } = await createAdminClient().from("ai_duel")
-      .upsert(ids.map((title_id) => ({ user_id: user.id, title_id, picked_by: ["check"] })), { onConflict: "user_id,title_id", ignoreDuplicates: true });
+      .upsert(rowsNew, { onConflict: "user_id,title_id", ignoreDuplicates: true });
     if (error) return { cards: 0, error: error.message };
-    return { cards: open.length + ids.length };
+    return { cards: open.length + rowsNew.length };
   } catch (e) {
     return { cards: 0, error: e instanceof Error ? e.message : String(e) };
   }

@@ -7,6 +7,7 @@ import Suspects from "./Suspects";
 import Review from "./Review";
 import DataStatus, { type DataRow } from "./DataStatus";
 import KiArea from "./KiArea";
+import UsersArea from "./UsersArea";
 import { SettingsPanel } from "./SourceForms";
 import { DEFAULT_SETTINGS, getCatalogSettings } from "@/lib/importer";
 import { clearBlocklist, unblockTitle } from "@/app/actions";
@@ -29,7 +30,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const suspects = bereich === "verdacht";
   const review = bereich === "pruefen";
   const daten = bereich === "daten";
-  const ki = bereich === "ki";
+  const nutzer = bereich === "nutzer";
+  const ki = bereich === "ki" || nutzer;
   const add = !manage && !curate && !suspects && !review && !daten && !ki;
 
   const admin = createAdminClient();
@@ -82,8 +84,16 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <TabLink href="/admin?bereich=ki" pressed={ki}>KI</TabLink>
       </div>
 
-      {ki ? (
-        <KiArea userId={user!.id} />
+      {nutzer ? (
+        <UsersArea userId={user!.id} />
+      ) : ki ? (
+        <>
+          <Link href="/admin?bereich=nutzer" className="waiting-banner" style={{ background: "var(--surface)", marginBottom: 14 }}>
+            <span><strong>Alle Nutzer</strong><span className="caption"> · wie gut passen die Vorschläge bei deinen Freunden?</span></span>
+            <span aria-hidden>›</span>
+          </Link>
+          <KiArea userId={user!.id} />
+        </>
       ) : daten ? (
         <>
           <Link href="/admin" className="caption">‹ Zurück zu Hinzufügen</Link>
