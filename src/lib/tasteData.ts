@@ -68,6 +68,16 @@ async function load(supabase: SupabaseClient, userId: string, withCatalog: boole
   return [rows, catalog] as const;
 }
 
+// Nur zählen (schnell) – die KI-Merkmale selbst werden erst geladen, wenn genug Filme eingeschätzt sind
+let aiCountCache: { at: number; n: number } | null = null;
+async function aiCount(supabase: SupabaseClient) {
+  if (aiCountCache && Date.now() - aiCountCache.at < CATALOG_TTL) return aiCountCache.n;
+  const { count, error } = await supabase.from("title_features").select("title_id", { count: "exact", head: true });
+  const n = error ? 0 : count ?? 0;
+  aiCountCache = { at: Date.now(), n };
+  return n;
+}
+
 export type AiByModel = Map<string, Map<number, AiFeatures>>;
 
 // KI-Merkmale aller Filme, getrennt nach Modell (leer, solange Ergänzung 13 fehlt)
@@ -96,7 +106,7 @@ export async function loadTasteData(supabase: SupabaseClient, userId: string, wi
   let catalogOut = catalog;
   // KI-Merkmale nur nutzen, wenn mindestens die Hälfte des Katalogs eingeschätzt ist –
   // sonst würden Filme mit Einschätzung gegenüber Filmen ohne bevorzugt oder benachteiligt.
-  if (withCatalog && catalog.length) {
+  if (withCatalog && catalog.length && (await aiCount(supabase)) >= catalog.length / 2) {
     const ai = await loadAiFeatures(supabase);
     const best = [...ai.entries()].sort((a, b) => b[1].size - a[1].size)[0];
     if (best && best[1].size >= catalog.length / 2) {

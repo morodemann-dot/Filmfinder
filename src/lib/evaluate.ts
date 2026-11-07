@@ -54,7 +54,25 @@ export function kindImpacts(rated: RatedTitle[], kinds: FeatureKind[], base: Eva
 // Bei Gleichstand gewinnt die vorsichtigere (weniger Geschmack, mehr Vorsicht).
 const TASTE_STEPS = [0, 0.5, 1, 1.5, 2.5];
 const SHRINK_STEPS = [2, 6];
+// Zwischenspeicher: Das Abstimmen dauert ~0,5 s und ändert sich nur, wenn sich deine Einträge ändern
+const tuneCache = new Map<string, ReturnType<typeof tuneUncached>>();
+function signature(rated: RatedTitle[], extra: Pick<ScoreOptions, "skipKinds">) {
+  let h = 2166136261; // FNV-1a über alles, was das Ergebnis beeinflusst
+  const add = (x: string) => { for (let i = 0; i < x.length; i++) { h ^= x.charCodeAt(i); h = Math.imul(h, 16777619); } };
+  for (const r of rated) add(`${r.id}|${r.status}|${r.rating ?? ""}|${r.favorite ? 1 : 0}|${r.reason ?? ""}|${(r.aspects ?? []).join(",")};`);
+  add(JSON.stringify(extra.skipKinds ?? []));
+  return `${rated.length}:${h >>> 0}`;
+}
 export function tuneOptions(rated: RatedTitle[], extra: Pick<ScoreOptions, "skipKinds"> = {}) {
+  const key = signature(rated, extra);
+  const hit = tuneCache.get(key);
+  if (hit) return hit;
+  const res = tuneUncached(rated, extra);
+  if (tuneCache.size > 200) tuneCache.delete(tuneCache.keys().next().value!);
+  tuneCache.set(key, res);
+  return res;
+}
+function tuneUncached(rated: RatedTitle[], extra: Pick<ScoreOptions, "skipKinds"> = {}) {
   const count = rated.filter((r) => r.status === "gesehen" && r.rating).length;
   if (count < MIN_FOR_TEST) return { opts: { ...DEFAULT_OPTIONS, ...extra } as ScoreOptions, result: null };
   let best: { opts: ScoreOptions; result: EvalResult } = { opts: { ...DEFAULT_OPTIONS, ...extra }, result: evaluate(rated, { ...DEFAULT_OPTIONS, ...extra }) };

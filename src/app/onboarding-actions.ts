@@ -4,6 +4,9 @@
 import { createAdminClient, createClient, getUser } from "@/lib/supabase/server";
 import { fetchTitleRow, searchTmdb } from "@/lib/tmdb";
 import type { AspectInfo } from "@/lib/aspects";
+import { cookies } from "next/headers";
+
+const DONE_COOKIE = "ff-einstieg";
 
 export type FavHit = { tmdb_id: number; id: number | null; title: string; year: string | null; poster_path: string | null };
 export type FavItem = { id: number; title: string; year: number | null; poster_path: string | null; rating: number | null; hasReasons: boolean };
@@ -20,6 +23,8 @@ async function me() {
 export async function onboardingNeeded(): Promise<boolean> {
   const user = await getUser();
   if (!user) return false;
+  // Schnellweg: Wer fertig ist, bekommt ein Merk-Cookie → keine Datenbank-Abfrage bei jedem Seitenwechsel
+  if ((await cookies()).get(DONE_COOKIE)?.value === user.id) return false;
   const supabase = await createClient();
   const { data, error } = await supabase.from("profiles").select("onboarding_done_at").eq("user_id", user.id).maybeSingle();
   if (error) return false;
@@ -32,6 +37,7 @@ export async function finishOnboarding() {
   const { error } = await supabase.from("profiles")
     .upsert({ user_id: user.id, onboarding_done_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
   if (error) throw new Error("Speichern fehlgeschlagen (wurde die Ergänzung 18 ausgeführt?)");
+  (await cookies()).set(DONE_COOKIE, user.id, { httpOnly: true, sameSite: "lax", secure: true, maxAge: 60 * 60 * 24 * 365, path: "/" });
 }
 
 // Schon markierte Lieblingsfilme (falls jemand das Tutorial neu beginnt oder schon ♥ gesetzt hat)

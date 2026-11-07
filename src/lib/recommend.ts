@@ -261,11 +261,21 @@ function recSignalRaw(r: RatedTitle) {
   return w;
 }
 
-export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: ScoreOptions = {}) {
+// Wie oft kommt jedes Merkmal im Katalog vor? Gleich für alle Nutzer → einmal pro Katalog rechnen
+const countsCache = new WeakMap<Title[], { catCount: Map<string, number>; catAi: number }>();
+function catalogCounts(catalog: Title[]) {
+  const hit = countsCache.get(catalog);
+  if (hit) return hit;
   const catCount = new Map<string, number>();
   for (const t of catalog) for (const f of new Set(featuresOf(t).map((x) => x.key))) catCount.set(f, (catCount.get(f) ?? 0) + 1);
   // KI-Merkmale gibt es nur für einen Teil der Filme → dort nur mit eingeschätzten Filmen vergleichen
-  const catAi = Math.max(1, catalog.filter((t) => t.ai).length);
+  const res = { catCount, catAi: Math.max(1, catalog.filter((t) => t.ai).length) };
+  countsCache.set(catalog, res);
+  return res;
+}
+
+export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: ScoreOptions = {}) {
+  const { catCount, catAi } = catalogCounts(catalog);
   const mine = new Map<string, { f: Feature; n: number }>();
   let total = 0, totalAi = 0;
   for (const r of rated) {
@@ -413,7 +423,9 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     const avg = n ? all / n : 0;
     for (const [g, x] of sums) genreQ.set(g, ((x.s / x.n) - avg) * (x.n / (x.n + 30)));
   }
-  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, genreQ, recFwd, recUser, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
+  const posIndex = buildSimIndex(anchorsPos.map((a) => a.v));
+  const negIndex = buildSimIndex(anchorsNeg);
+  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, posIndex, negIndex, genreQ, recFwd, recUser, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -520,6 +532,34 @@ export function similarity(a: Map<string, number>, b: Map<string, number>) {
   return sa && sb ? shared / Math.sqrt(sa * sb) : 0;
 }
 
+// Schneller Vergleich mit vielen Ankern auf einmal (gleiches Ergebnis wie similarity(), aber über einen Index:
+// statt jeden Film mit jedem Anker zu vergleichen, wird nur über die gemeinsamen Merkmale gezählt)
+export type SimIndex = { byKey: Map<string, { i: number; w: number }[]>; sums: Float64Array; n: number };
+export function buildSimIndex(vectors: Map<string, number>[]): SimIndex {
+  const byKey = new Map<string, { i: number; w: number }[]>();
+  const sums = new Float64Array(vectors.length);
+  vectors.forEach((v, i) => {
+    for (const [k, w] of v) {
+      sums[i] += w;
+      const list = byKey.get(k);
+      if (list) list.push({ i, w }); else byKey.set(k, [{ i, w }]);
+    }
+  });
+  return { byKey, sums, n: vectors.length };
+}
+// Liefert für jeden Anker die Ähnlichkeit (0–1) zum Vektor v
+export function similarities(v: Map<string, number>, idx: SimIndex): Float64Array {
+  const shared = new Float64Array(idx.n);
+  let sv = 0;
+  for (const [k, x] of v) {
+    sv += x;
+    const list = idx.byKey.get(k);
+    if (list) for (const a of list) shared[a.i] += x;
+  }
+  for (let i = 0; i < idx.n; i++) shared[i] = sv && idx.sums[i] ? shared[i] / Math.sqrt(sv * idx.sums[i]) : 0;
+  return shared;
+}
+
 // Gewicht einer Merkmalsart – die per Schalter zuschaltbaren Arten (Herkunft, Studio, Genre-Kombi) sonst 0
 function kindWeights(opts: ScoreOptions) {
   const extra = (k: FeatureKind) =>
@@ -590,13 +630,14 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
     let similarTo: { t: Title; s: number; fav: boolean } | null = null;
     if (sw && profile.anchorsPos.length) {
       const v = simVector(t, feats);
-      for (const a of profile.anchorsPos) {
+      const sims = similarities(v, profile.posIndex);
+      for (let i = 0; i < profile.anchorsPos.length; i++) {
+        const a = profile.anchorsPos[i];
         if (a.t.id === t.id) continue;
-        const s = similarity(v, a.v);
-        if (!similarTo || s > similarTo.s) similarTo = { t: a.t, s, fav: a.fav };
+        if (!similarTo || sims[i] > similarTo.s) similarTo = { t: a.t, s: sims[i], fav: a.fav };
       }
       let neg = 0;
-      for (const a of profile.anchorsNeg) neg = Math.max(neg, similarity(v, a));
+      for (const x of similarities(v, profile.negIndex)) neg = Math.max(neg, x);
       score += sw * ((similarTo?.s ?? 0) - 0.6 * (opts.negWeight ?? 1) * neg);
     }
     // 9) TMDB-Empfehlungen: in beide Richtungen (dein Film empfiehlt diesen / dieser empfiehlt deinen)
