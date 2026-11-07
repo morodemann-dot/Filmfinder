@@ -36,14 +36,14 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "v4", name: "+ 4 Herkunft, Sprache, Studio", ...APP, extra: { originWeight: 0.4 } },
   { key: "v5", name: "+ 5 Qualität je Genre", ...APP, extra: { genreQuality: true } },
   { key: "v6", name: "+ 6 Genre-Kombinationen", ...APP, extra: { genrePairWeight: 0.6 } },
-  { key: "vall", name: "Vorherige App: Verbesserungen 1–6", ...APP, extra: ALL_EXTRAS },
+  { key: "vall", name: "App mit Verbesserungen 1–6", ...APP, extra: ALL_EXTRAS },
   { key: "vall_nosim", name: "Alle Verbesserungen ohne Ähnlichkeit", ...APP, extra: { ...ALL_EXTRAS, similarityWeight: 0 } },
   { key: "vall_q0", name: "Alle Verbesserungen ohne Qualität", ...APP, quality: 0, extra: ALL_EXTRAS },
   // 7) Duell-Antworten als Lernstoff (fair getestet: gelernt wird nur aus den jeweils anderen Antworten)
   { key: "d05", name: "+ 7 Duell-Antworten (leicht)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 0.5 } },
   { key: "d1", name: "+ 7 Duell-Antworten", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 1 } },
   { key: "d2", name: "+ 7 Duell-Antworten (stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 2 } },
-  { key: "d4", name: "Neueste App: + Duell-Antworten", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4 } },
+  { key: "d4", name: "Vorherige App: + Duell-Antworten", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4 } },
   { key: "d8", name: "+ 7 Duell-Antworten (extrem)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 8 } },
   // 8) Merkliste / Kein Interesse stärker (hilft allen, die kein Duell machen)
   { key: "sw2", name: "+ 8 Merkliste/Kein Interesse ×2", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2 } },
@@ -52,6 +52,12 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "r1", name: "+ 9 TMDB-Empfehlungen (leicht)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 0.15 } },
   { key: "r2", name: "+ 9 TMDB-Empfehlungen", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 0.3 } },
   { key: "r3", name: "+ 9 TMDB-Empfehlungen (stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 0.6 } },
+  // Kombination, wie sie jetzt im Filmfinder läuft: Duell-Antworten + Merkliste/Kein Interesse ×2 + TMDB leicht
+  { key: "kombi", name: "Neueste App: + Merkliste ×2 + TMDB", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15 } },
+  // 10) Schlechte Bewertungen / Kein Interesse / passt nicht stärker
+  { key: "n15", name: "+ 10 Negatives ×1,5", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, negWeight: 1.5 } },
+  { key: "n2", name: "+ 10 Negatives ×2", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, negWeight: 2 } },
+  { key: "n3", name: "+ 10 Negatives ×3", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, negWeight: 3 } },
   { key: "r4", name: "+ 9 TMDB-Empfehlungen (sehr stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 1.2 } },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
@@ -64,9 +70,9 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Danach: App vs. Interesse ×2 vs. ohne Qualität; dann App vs. alle Verbesserungen vs. Ähnlichkeit (5 Runden).
 // Jetzt (aus dem ganzen Katalog): neue App (alle 1–6) vs. alte App vs. alle ohne Ähnlichkeit
 // Ab Nov. 2026 (Runde mit Duell-Lernen): App mit Duell-Antworten vs. vorherige App vs. alte App
-export const DUEL_SOURCES: SourceDef[] = [byKey("d4"), byKey("vall"), byKey("i1_q05")];
+export const DUEL_SOURCES: SourceDef[] = [byKey("kombi"), byKey("d4"), byKey("vall")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
-export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "d4", "sw2", "sw4", "r1", "r2", "r3", "r4"].map(byKey);
+export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "d4", "sw2", "r1", "kombi", "n15", "n2", "n3"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
 export const sourceName = (k: string) => ALL_SOURCES.find((s) => s.key === k)?.name ?? k;
 

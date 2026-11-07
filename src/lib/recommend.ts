@@ -100,6 +100,7 @@ export type ScoreOptions = {
   originWeight?: number; // 4) Herkunftsland, Originalsprache, Studio als Merkmal
   genreQuality?: boolean; // 5) Qualität im Vergleich zum Genre (Horror mit 7,0 ist stark)
   genrePairWeight?: number; // 6) Genre-Kombinationen (Sci-Fi + Drama ≠ Sci-Fi + Action)
+  negWeight?: number; // 10) Schlechte Bewertungen, "Kein Interesse" und "passt nicht" stärker zählen (1 = wie bisher)
   recWeight?: number; // 9) TMDB-Empfehlungen: "Wer X mochte, mochte auch Y" (0 = aus)
   swipeWeight?: number; // 8) Merkliste / "Kein Interesse" stärker zählen (1 = wie bisher)
   duelWeight?: number; // 7) Duell-Antworten zu unbekannten Filmen (passt / passt nicht) als Lernstoff
@@ -120,6 +121,8 @@ export const APP_SETTINGS: ScoreOptions = {
   interestByRating: true, similarityWeight: 2, rareKeywords: true, originWeight: 0.4, genreQuality: true, genrePairWeight: 0.6,
   // Nov. 2026 (797 Antworten, fairer 5-fach-Test): Duell-Antworten mitlernen 73 % → 79 % ("sehr stark" = 4; 8 nicht besser)
   duelWeight: 4,
+  // Nov. 2026 (841 Antworten): TMDB-Empfehlungen leicht (0,15) und Merkliste/Kein Interesse ×2 je 79 % (+1) → übernommen
+  recWeight: 0.15, swipeWeight: 2,
 };
 
 type Feature = { key: string; kind: FeatureKind; label: string };
@@ -227,7 +230,11 @@ function reasonWeight(reason: string | null | undefined, f: Feature) {
 }
 
 // Wie stark ein gesehener Film fürs Interesse zählt (Schalter interestByRating) – Lieblingsfilme immer stark
-function interestWeightOf(r: RatedTitle, byRating: boolean, duelWeight = 0, swipe = 1) {
+function interestWeightOf(r: RatedTitle, byRating: boolean, duelWeight = 0, swipe = 1, neg = 1) {
+  const w = interestWeightRaw(r, byRating, duelWeight, swipe);
+  return w < 0 ? w * neg : w;
+}
+function interestWeightRaw(r: RatedTitle, byRating: boolean, duelWeight: number, swipe: number) {
   // 7) Duell: "passt" = will ich sehen (ähnlich Merkliste, etwas stärker), "passt nicht" = eher kein Interesse
   if (r.status === DUEL_YES) return 0.8 * duelWeight;
   if (r.status === DUEL_NO) return -0.5 * duelWeight;
@@ -241,7 +248,11 @@ function interestWeightOf(r: RatedTitle, byRating: boolean, duelWeight = 0, swip
 }
 
 // 9) Wie stark ein Eintrag für die TMDB-Empfehlungen zählt (+ = mochtest du, − = eher nicht)
-function recSignal(r: RatedTitle) {
+function recSignal(r: RatedTitle, neg = 1) {
+  const w = recSignalRaw(r);
+  return w < 0 ? w * neg : w;
+}
+function recSignalRaw(r: RatedTitle) {
   let w = 0;
   if (r.status === "gesehen" && r.rating) { const x = r.rating; w = x >= 9 ? 1.6 : x >= 8 ? 1.3 : x >= 7 ? 1 : x >= 6 ? 0.4 : x >= 5 ? -0.2 : -1; }
   else if (r.status === "merkliste" || r.status === DUEL_YES) w = 0.6;
@@ -259,7 +270,8 @@ export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: Score
   let total = 0, totalAi = 0;
   for (const r of rated) {
     const swipe = opts.swipeWeight ?? 1;
-    const w = interestWeightOf(r, !!opts.interestByRating, opts.duelWeight ?? 0, swipe);
+    const negW = opts.negWeight ?? 1;
+    const w = interestWeightOf(r, !!opts.interestByRating, opts.duelWeight ?? 0, swipe, negW);
     if (!w) continue;
     if (w > 0) { total += w; if (r.ai) totalAi += w; }
     const seen = new Set<string>();
@@ -267,7 +279,7 @@ export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: Score
       if (seen.has(f.key)) continue;
       seen.add(f.key);
       const a = mine.get(f.key) ?? { f, n: 0 };
-      a.n += w < 0 ? (r.status === "nicht_interessiert" ? reasonWeight(r.reason, f) * swipe : w) : w;
+      a.n += w < 0 ? (r.status === "nicht_interessiert" ? reasonWeight(r.reason, f) * swipe * negW : w) : w;
       mine.set(f.key, a);
     }
   }
@@ -335,11 +347,12 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
   for (const r of rated) {
     // Gelernt wird nur, was von der Erwartung abweicht: Mag jemand Nolan nur, weil Nolan-Filme
     // allgemein gut sind, ist das schon über die Qualität abgedeckt und zählt hier nicht doppelt.
-    if (r.status === "gesehen" && r.rating) add(r, r.rating - expected(r), 1, r.rating);
-    else if (r.status === "nicht_interessiert") add(r, -2, 0.5 * (opts.swipeWeight ?? 1), null); // schwaches Minus
+    const nw = opts.negWeight ?? 1;
+    if (r.status === "gesehen" && r.rating) { const d = r.rating - expected(r); add(r, d, d < 0 ? nw : 1, r.rating); }
+    else if (r.status === "nicht_interessiert") add(r, -2, 0.5 * (opts.swipeWeight ?? 1) * nw, null); // schwaches Minus
     else if (r.status === "merkliste") add(r, 1, 0.3 * (opts.swipeWeight ?? 1), null); // sehr schwaches Plus
     else if (r.status === DUEL_YES && opts.duelWeight) add(r, 1.5, 0.4 * opts.duelWeight, null);
-    else if (r.status === DUEL_NO && opts.duelWeight) add(r, -1.5, 0.4 * opts.duelWeight, null);
+    else if (r.status === DUEL_NO && opts.duelWeight) add(r, -1.5, 0.4 * opts.duelWeight * nw, null);
     if (r.favorite) add(r, 2, 0.8, null); // Lieblingsfilm: zusätzliches, deutliches Plus
   }
 
@@ -371,7 +384,7 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
   const recUser = new Map<number, number>();
   if (opts.recWeight) {
     for (const r of rated) {
-      const w = recSignal(r);
+      const w = recSignal(r, opts.negWeight ?? 1);
       if (!w || !r.tmdb_id) continue;
       recUser.set(r.tmdb_id, w);
       (r.tmdb_recs ?? []).forEach((rid, i) => {
@@ -584,7 +597,7 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
       }
       let neg = 0;
       for (const a of profile.anchorsNeg) neg = Math.max(neg, similarity(v, a));
-      score += sw * ((similarTo?.s ?? 0) - 0.6 * neg);
+      score += sw * ((similarTo?.s ?? 0) - 0.6 * (opts.negWeight ?? 1) * neg);
     }
     // 9) TMDB-Empfehlungen: in beide Richtungen (dein Film empfiehlt diesen / dieser empfiehlt deinen)
     let recFrom: { t: Title; c: number } | null = null;
