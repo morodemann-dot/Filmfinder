@@ -1,8 +1,8 @@
-import { Fragment } from "react";
+import { Fragment, Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import AiPilot from "./AiPilot";
-import DuelDeck from "./DuelDeck";
-import { PrepareButton, ResetButton, RoundButton } from "./DuelControls";
+import DuelPlay from "./DuelPlay";
+import { PrepareButton, ResetButton } from "./DuelControls";
 import { aiPilotStatus, type AiStatus } from "@/app/catalog-actions";
 import { duelAnswers, duelCards, duelResults, type DuelCard } from "@/app/ki-actions";
 import { createClient } from "@/lib/supabase/server";
@@ -53,26 +53,17 @@ function FeatureTable({ kinds, models, noise, agreement }: {
 }
 
 export default async function KiArea({ userId }: { userId: string }) {
-  const supabase = await createClient();
-  const [statusRated, statusTest, { rated, catalog }, ai, duel, cards, answers] = await Promise.all([
+  const [statusRated, statusTest, duel, cards] = await Promise.all([
     aiPilotStatus("rated"),
     aiPilotStatus("test"),
-    loadTasteData(supabase, userId),
-    loadAiFeatures(supabase),
     duelResults().catch(() => null),
     duelCards().catch(() => []),
-    duelAnswers().catch(() => new Map<number, boolean>()),
   ]);
-  // Nachträglicher Test: Wie hätten die Varianten deine bisherigen Duell-Antworten eingestuft?
-  let retro: Retro[] = [];
-  if (answers.size >= 6) {
-    const { data } = await supabase.from("titles").select("*").in("id", [...answers.keys()]);
-    const films = (data ?? []) as Title[];
-    retro = EVAL_SOURCES
-      .filter((src) => !src.model || (ai.get(src.model)?.size ?? 0) > 0)
-      .map((src) => ({ key: src.key, name: src.name, inDuel: DUEL_SOURCES.includes(src), ...duelAuc(rankWith(src, rated, catalog, ai, films), answers) }));
-  }
-  return <KiView statusRated={statusRated} statusTest={statusTest} cmp={compareModels(rated, ai)} duel={duel} cards={cards} retro={retro} />;
+  return (
+    <KiView statusRated={statusRated} statusTest={statusTest} duel={duel} cards={cards}
+      compareSlot={<KiCompareSlot userId={userId} statusRated={statusRated} />}
+      retroSlot={<KiRetroSlot userId={userId} />} />
+  );
 }
 
 type Retro = { key: string; name: string; inDuel: boolean; auc: number | null; yes: number; no: number };
@@ -81,17 +72,15 @@ type Props = {
   retro?: Retro[];
   statusRated: AiStatus[] | null;
   statusTest: AiStatus[] | null;
-  cmp: ReturnType<typeof compareModels>;
+  cmp?: ReturnType<typeof compareModels>;
+  compareSlot?: ReactNode; // wird nachgeladen (rechenintensiv)
+  retroSlot?: ReactNode; // wird nachgeladen (rechenintensiv)
   duel: Awaited<ReturnType<typeof duelResults>>;
   cards: DuelCard[];
 };
 
-export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }: Props) {
+export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro = [], compareSlot, retroSlot }: Props) {
   const totalCost = [...(statusRated ?? []), ...(statusTest ?? [])].reduce((s, x) => s + x.costUsd, 0);
-  const aiModels = cmp?.results.filter((r) => r.key !== "ohne") ?? [];
-  const base = cmp?.results.find((r) => r.key === "ohne");
-  const best = aiModels.reduce<ModelResult | null>((a, b) => (!a || b.accuracy > a.accuracy ? b : a), null);
-  const missing = (statusRated ?? []).filter((s) => s.done < 20);
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -113,6 +102,88 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }
       {/* 2 – Vergleich */}
       <div className="panel">
         <div className="eyebrow" style={{ marginBottom: 4 }}>2 · Vergleich im Messtest</div>
+        {compareSlot ?? <CompareBody cmp={cmp} statusRated={statusRated} />}
+      </div>
+
+      {/* 3 – Modell-Duell */}
+      <div className="panel">
+        <div className="eyebrow" style={{ marginBottom: 4 }}>3 · Modell-Duell (blind)</div>
+        <p className="caption" style={{ marginTop: 0 }}>
+          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1980, die du noch nicht eingeordnet hast: die aktuelle App-Einstellung,
+          „Alle Verbesserungen 1–6“ und „Ähnlichkeit zu Lieblingen“. Ganz ohne KI.
+          Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
+          Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
+          Diese Antworten fließen <strong>nicht</strong> in dein Geschmacksprofil ein.
+        </p>
+        {!duel ? (
+          <p className="caption" style={{ margin: 0 }}>Zuerst die <strong>Ergänzung 14</strong> im Supabase SQL Editor ausführen, dann diese Seite neu laden.</p>
+        ) : duel.pool === 0 ? (
+          <>
+            <p className="small">Schritt 1: Die App wählt 100 Testfilme ab 1980 aus (50, die sie für passend hält, und 50 zufällige solide Filme).</p>
+            <PrepareButton />
+          </>
+        ) : (
+          <div style={{ display: "grid", gap: 16 }}>
+            {DUEL_MODELS.length > 0 && (
+              <div>
+                <p className="small" style={{ marginTop: 0 }}>Schritt 2: Die KI schätzt die {duel.pool} Testfilme ein.</p>
+                <AiPilot status={statusTest} scope="test" models={DUEL_MODELS} />
+              </div>
+            )}
+            <div>
+              <p className="small" style={{ marginTop: 0 }}>Blind bewerten:</p>
+              <DuelPlay initialCards={cards} answered={duel.answered} />
+            </div>
+            {retroSlot ?? <RetroBody retro={retro} />}
+            {duel.results.some((r) => r.passt + r.nicht + r.gesehen > 0) && (
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>Auswertung</div>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 50px 50px 50px 62px", gap: "8px 8px", alignItems: "baseline" }}>
+                  <span />
+                  <span className="eyebrow" style={{ textAlign: "right" }}>Passt</span>
+                  <span className="eyebrow" style={{ textAlign: "right" }}>Nicht</span>
+                  <span className="eyebrow" style={{ textAlign: "right" }}>Ges.</span>
+                  <span className="eyebrow" style={{ textAlign: "right" }}>Treffer</span>
+                  {duel.results.map((r) => {
+                    const judged = r.passt + r.nicht;
+                    return (
+                      <Fragment key={r.source}>
+                        <span>{r.name}</span>
+                        <span style={{ textAlign: "right" }}>{r.passt}</span>
+                        <span style={{ textAlign: "right" }}>{r.nicht}</span>
+                        <span className="caption" style={{ textAlign: "right" }}>{r.gesehen}</span>
+                        <span style={{ textAlign: "right", fontWeight: 700 }}>{judged ? pct(r.passt / judged) : "–"}</span>
+                      </Fragment>
+                    );
+                  })}
+                </div>
+                <p className="caption">
+                  Treffer = Anteil der Vorschläge, die zu dir passen („schon gesehen“ zählt nicht mit). Ab etwa 20 bewerteten
+                  Vorschlägen pro Variante wird der Vergleich aussagekräftig – also lieber 2–3 Runden machen.
+                </p>
+              </div>
+            )}
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <PrepareButton label="100 weitere Testfilme" />
+              <ResetButton />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <Link href="/messtest" className="caption">Zum ausführlichen Messtest ›</Link>
+    </div>
+  );
+}
+
+// ---- Abschnitt 2: Vergleich im Messtest ----
+function CompareBody({ cmp, statusRated }: { cmp: ReturnType<typeof compareModels>; statusRated: AiStatus[] | null }) {
+  const aiModels = cmp?.results.filter((r) => r.key !== "ohne") ?? [];
+  const base = cmp?.results.find((r) => r.key === "ohne");
+  const best = aiModels.reduce<ModelResult | null>((a, b) => (!a || b.accuracy > a.accuracy ? b : a), null);
+  const missing = (statusRated ?? []).filter((s) => s.done < 20);
+  return (
+    <>
         {!cmp || !base ? (
           <p className="caption" style={{ margin: 0 }}>Dafür braucht es mindestens 20 bewertete Filme.</p>
         ) : (
@@ -168,44 +239,14 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }
             )}
           </>
         )}
-      </div>
+    </>
+  );
+}
 
-      {/* 3 – Modell-Duell */}
-      <div className="panel">
-        <div className="eyebrow" style={{ marginBottom: 4 }}>3 · Modell-Duell (blind)</div>
-        <p className="caption" style={{ marginTop: 0 }}>
-          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1980, die du noch nicht eingeordnet hast: die aktuelle App-Einstellung,
-          „Alle Verbesserungen 1–6“ und „Ähnlichkeit zu Lieblingen“. Ganz ohne KI.
-          Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
-          Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
-          Diese Antworten fließen <strong>nicht</strong> in dein Geschmacksprofil ein.
-        </p>
-        {!duel ? (
-          <p className="caption" style={{ margin: 0 }}>Zuerst die <strong>Ergänzung 14</strong> im Supabase SQL Editor ausführen, dann diese Seite neu laden.</p>
-        ) : duel.pool === 0 ? (
-          <>
-            <p className="small">Schritt 1: Die App wählt 100 Testfilme ab 1980 aus (50, die sie für passend hält, und 50 zufällige solide Filme).</p>
-            <PrepareButton />
-          </>
-        ) : (
-          <div style={{ display: "grid", gap: 16 }}>
-            {DUEL_MODELS.length > 0 && (
-              <div>
-                <p className="small" style={{ marginTop: 0 }}>Schritt 2: Die KI schätzt die {duel.pool} Testfilme ein.</p>
-                <AiPilot status={statusTest} scope="test" models={DUEL_MODELS} />
-              </div>
-            )}
-            <div>
-              <p className="small" style={{ marginTop: 0 }}>Blind bewerten:</p>
-              {cards.length > 0 ? <DuelDeck cards={cards} /> : (
-                <>
-                  <p className="caption">
-                    Jede Variante schlägt 10 Filme vor (doppelte erscheinen nur einmal). Haiku macht mit, sobald es deine Filme und fast alle Testfilme eingeschätzt hat.
-                  </p>
-                  <RoundButton label={duel.answered ? "Nächste Runde starten" : "Erste Runde starten"} />
-                </>
-              )}
-            </div>
+// ---- Nachträglicher Test ----
+function RetroBody({ retro }: { retro: Retro[] }) {
+  return (
+    <>
             {retro.length > 0 && retro[0].auc != null && (
               <div>
                 <div className="eyebrow" style={{ marginBottom: 4 }}>Nachträglicher Test auf deinen Antworten</div>
@@ -223,43 +264,34 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards, retro = [] }
                 </div>
               </div>
             )}
-            {duel.results.some((r) => r.passt + r.nicht + r.gesehen > 0) && (
-              <div>
-                <div className="eyebrow" style={{ marginBottom: 8 }}>Auswertung</div>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 50px 50px 50px 62px", gap: "8px 8px", alignItems: "baseline" }}>
-                  <span />
-                  <span className="eyebrow" style={{ textAlign: "right" }}>Passt</span>
-                  <span className="eyebrow" style={{ textAlign: "right" }}>Nicht</span>
-                  <span className="eyebrow" style={{ textAlign: "right" }}>Ges.</span>
-                  <span className="eyebrow" style={{ textAlign: "right" }}>Treffer</span>
-                  {duel.results.map((r) => {
-                    const judged = r.passt + r.nicht;
-                    return (
-                      <Fragment key={r.source}>
-                        <span>{r.name}</span>
-                        <span style={{ textAlign: "right" }}>{r.passt}</span>
-                        <span style={{ textAlign: "right" }}>{r.nicht}</span>
-                        <span className="caption" style={{ textAlign: "right" }}>{r.gesehen}</span>
-                        <span style={{ textAlign: "right", fontWeight: 700 }}>{judged ? pct(r.passt / judged) : "–"}</span>
-                      </Fragment>
-                    );
-                  })}
-                </div>
-                <p className="caption">
-                  Treffer = Anteil der Vorschläge, die zu dir passen („schon gesehen“ zählt nicht mit). Ab etwa 20 bewerteten
-                  Vorschlägen pro Variante wird der Vergleich aussagekräftig – also lieber 2–3 Runden machen.
-                </p>
-              </div>
-            )}
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <PrepareButton label="100 weitere Testfilme" />
-              <ResetButton />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <Link href="/messtest" className="caption">Zum ausführlichen Messtest ›</Link>
-    </div>
+    </>
   );
 }
+
+// Nachgeladene Teile (der Rest der Seite erscheint sofort)
+const Loading = ({ what }: { what: string }) => <p className="caption" style={{ margin: 0 }}>{what} wird berechnet …</p>;
+
+async function CompareSection({ userId, statusRated }: { userId: string; statusRated: AiStatus[] | null }) {
+  const supabase = await createClient();
+  const [{ rated }, ai] = await Promise.all([loadTasteData(supabase, userId, false), loadAiFeatures(supabase)]);
+  return <CompareBody cmp={compareModels(rated, ai)} statusRated={statusRated} />;
+}
+
+async function RetroSection({ userId }: { userId: string }) {
+  const supabase = await createClient();
+  const [{ rated, catalog }, ai, answers] = await Promise.all([
+    loadTasteData(supabase, userId), loadAiFeatures(supabase), duelAnswers().catch(() => new Map<number, boolean>()),
+  ]);
+  if (answers.size < 6) return null;
+  const { data } = await supabase.from("titles").select("*").in("id", [...answers.keys()]);
+  const films = (data ?? []) as Title[];
+  const retro: Retro[] = EVAL_SOURCES
+    .filter((src) => !src.model || (ai.get(src.model)?.size ?? 0) > 0)
+    .map((src) => ({ key: src.key, name: src.name, inDuel: DUEL_SOURCES.includes(src), ...duelAuc(rankWith(src, rated, catalog, ai, films), answers) }));
+  return <RetroBody retro={retro} />;
+}
+
+export const KiCompareSlot = ({ userId, statusRated }: { userId: string; statusRated: AiStatus[] | null }) =>
+  <Suspense fallback={<Loading what="Der Vergleich" />}><CompareSection userId={userId} statusRated={statusRated} /></Suspense>;
+export const KiRetroSlot = ({ userId }: { userId: string }) =>
+  <Suspense fallback={<Loading what="Der nachträgliche Test" />}><RetroSection userId={userId} /></Suspense>;

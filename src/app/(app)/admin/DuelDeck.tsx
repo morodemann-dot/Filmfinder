@@ -10,7 +10,7 @@ type Answer = "passt" | "passt_nicht" | "gesehen";
 const THRESHOLD = 90;
 const STAMP: Record<Answer, string> = { passt: "PASST", passt_nicht: "PASST NICHT", gesehen: "GESEHEN" };
 
-export default function DuelDeck({ cards }: { cards: DuelCard[] }) {
+export default function DuelDeck({ cards, onFinished }: { cards: DuelCard[]; onFinished?: () => void }) {
   const router = useRouter();
   const [index, setIndex] = useState(0);
   const [history, setHistory] = useState<DuelCard[]>([]);
@@ -32,7 +32,7 @@ export default function DuelDeck({ cards }: { cards: DuelCard[] }) {
     setDx(0);
     setHistory((h) => [...h.slice(-19), c]);
     duelAnswer(c.id, a).catch(() => setError(`„${c.title}“ konnte nicht gespeichert werden.`));
-    if (index + 1 >= cards.length) setTimeout(() => router.refresh(), 500);
+    if (index + 1 >= cards.length) setTimeout(() => (onFinished ? onFinished() : router.refresh()), 500);
   }
 
   function undo() {

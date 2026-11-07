@@ -84,10 +84,13 @@ export async function duelStartRound(): Promise<{ cards: number; sources: string
       }
     }
     const admin = createAdminClient();
+    // alles in zwei Schritten speichern (statt jeden Film einzeln)
     await admin.from("ai_duel").update({ picked_by: [] }).eq("user_id", user.id).is("answer", null);
-    for (const [title_id, srcs] of picks) {
-      await admin.from("ai_duel").update({ picked_by: [...srcs] }).eq("user_id", user.id).eq("title_id", title_id);
-    }
+    const { error: upErr } = await admin.from("ai_duel").upsert(
+      [...picks].map(([title_id, srcs]) => ({ user_id: user.id, title_id, picked_by: [...srcs] })),
+      { onConflict: "user_id,title_id" },
+    );
+    if (upErr) return { cards: 0, sources, error: upErr.message };
     return { cards: picks.size, sources };
   } catch (e) {
     return { cards: 0, sources: [], error: e instanceof Error ? e.message : String(e) };
