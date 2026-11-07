@@ -23,6 +23,13 @@ export type RateCandidate = {
   composers?: string[] | null;
   cinematographers?: string[] | null;
   based_on?: string[] | null;
+  writers?: string[] | null;
+  keywords?: string[] | null;
+  main_subjects?: string[] | null;
+  set_in_period?: string[] | null;
+  narrative_locations?: string[] | null;
+  runtime_seconds?: number | null;
+  certification_de?: string | null;
 };
 
 export type SeenTitle = Pick<RateCandidate, "directors" | "cast_names" | "collection_id">;

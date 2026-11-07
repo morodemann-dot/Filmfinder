@@ -163,7 +163,10 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
           initialRating={fb?.rating ?? null}
           title={title.title}
           info={{ directors: title.directors, cast_names: title.cast_names?.slice(0, 3), genres: title.genres, wd_genres: title.wd_genres,
-            composers: title.composers?.slice(0, 1), cinematographers: title.cinematographers?.slice(0, 1), based_on: title.based_on }}
+            composers: title.composers?.slice(0, 1), cinematographers: title.cinematographers?.slice(0, 1), based_on: title.based_on,
+            writers: title.writers?.slice(0, 1), keywords: title.keywords?.slice(0, 15), main_subjects: title.main_subjects,
+            set_in_period: title.set_in_period, narrative_locations: title.narrative_locations, runtime_seconds: title.runtime_seconds,
+            certification_de: title.certification_de, collection_name: title.collection_name }}
         />
 
         {title.collection_name && (

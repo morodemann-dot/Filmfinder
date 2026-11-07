@@ -6,7 +6,7 @@ import type { Title } from "./types";
 import type { AiFeatures } from "./aiFeatures";
 
 const COLS =
-  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds,keywords,wd_genres,main_subjects,writers,cinematographers,composers,based_on,vote_average,vote_count,certification_de,festivals";
+  "id,media_type,title,poster_path,release_year,format,genres,directors,cast_names,studios,collection_id,collection_name,oscars,globes,popularity,runtime_seconds,keywords,wd_genres,main_subjects,writers,cinematographers,composers,based_on,vote_average,vote_count,certification_de,festivals,set_in_period,narrative_locations";
 // Ergänzung 12 (Wikidata) – fehlt sie noch, läuft alles mit den Grundspalten weiter
 const COLS_EXTRA = COLS + ",black_and_white,budget_usd,nominations";
 

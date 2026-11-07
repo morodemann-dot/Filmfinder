@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { REASONS, aspectOptions, type AspectInfo, type ReasonKey } from "@/lib/aspects";
+import { REASONS, aspectGroups, aspectTitle, type AspectInfo, type ReasonKey } from "@/lib/aspects";
 
 // Kleine Frage-Leiste, die sich über den Inhalt legt. Immer überspringbar.
 
@@ -19,21 +19,29 @@ export function ReasonSheet({ title, onDone }: { title: string; onDone: (r: Reas
   );
 }
 
-export function AspectSheet({ title, info, mode, onDone }: {
-  title: string; info: AspectInfo; mode: "pos" | "neg"; onDone: (aspects: string[]) => void;
+export function AspectSheet({ title, info, rating, onDone }: {
+  title: string; info: AspectInfo; rating: number; onDone: (aspects: string[]) => void;
 }) {
   const [chosen, setChosen] = useState<string[]>([]);
-  const options = aspectOptions(info, mode === "pos");
-  const toggle = (k: string) => setChosen((c) => (c.includes(k) ? c.filter((x) => x !== k) : c.length >= 3 ? c : [...c, k]));
+  const groups = aspectGroups(info, rating);
+  const toggle = (k: string) => setChosen((c) => (c.includes(k) ? c.filter((x) => x !== k) : c.length >= 4 ? c : [...c, k]));
   return (
     <div className="question-sheet" role="dialog" aria-label="Kurze Frage">
-      <div className="eyebrow" style={{ marginBottom: 2 }}>{mode === "pos" ? "Was hat dir besonders gefallen?" : "Was hat dich gestört?"}</div>
-      <div className="caption" style={{ marginBottom: 8 }}>„{title}“ · bis zu 3 antippen</div>
-      <div className="q-chips">
-        {options.map((o) => (
-          <button key={o.key} className={`q-chip ${chosen.includes(o.key) ? "on" : ""}`} aria-pressed={chosen.includes(o.key)} onClick={() => toggle(o.key)}>
-            {o.label}
-          </button>
+      <div className="eyebrow" style={{ marginBottom: 2 }}>{aspectTitle(rating)}</div>
+      <div className="caption" style={{ marginBottom: 8 }}>„{title}“ · {rating}/10 · bis zu 4 antippen</div>
+      <div className="q-scroll">
+        {groups.map((g, gi) => (
+          <div key={gi} style={{ marginTop: gi ? 10 : 0 }}>
+            {g.label && <div className="caption" style={{ fontWeight: 600, marginBottom: 6 }}>{g.label}</div>}
+            <div className="q-chips">
+              {g.options.map((o) => (
+                <button key={o.key} className={`q-chip ${chosen.includes(o.key) ? "on" : ""} ${o.key.startsWith("-") ? "neg" : ""}`}
+                  aria-pressed={chosen.includes(o.key)} onClick={() => toggle(o.key)}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
       <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>

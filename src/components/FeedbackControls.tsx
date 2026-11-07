@@ -21,7 +21,7 @@ export default function FeedbackControls({
   title?: string;
   info?: AspectInfo;
 }) {
-  const [question, setQuestion] = useState<"reason" | "pos" | "neg" | null>(null);
+  const [question, setQuestion] = useState<"reason" | number | null>(null);
   const [status, setStatus] = useState<Status | null>(initialStatus);
   const [rating, setRating] = useState<number | null>(initialRating);
   const [pending, start] = useTransition();
@@ -80,8 +80,8 @@ export default function FeedbackControls({
           if (r && r !== "spaeter") saveFeedbackQuiet(titleId, "nicht_interessiert", null, r).catch(() => {});
         }} />
       )}
-      {(question === "pos" || question === "neg") && title && (
-        <AspectSheet title={title} info={info ?? {}} mode={question} onDone={(list) => {
+      {typeof question === "number" && title && (
+        <AspectSheet title={title} info={info ?? {}} rating={question} onDone={(list) => {
           setQuestion(null);
           if (list.length) saveAspects(titleId, list).catch(() => {});
         }} />

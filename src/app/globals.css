@@ -487,3 +487,5 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .q-chip:active { transform: scale(0.97); }
 .detail-toggle { display: flex; gap: 10px; align-items: flex-start; margin-top: 20px; padding: 12px; border-radius: 14px; background: var(--surface); cursor: pointer; line-height: 1.35; }
 .detail-toggle input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; margin-top: 1px; }
+.q-scroll { max-height: min(46vh, 380px); overflow-y: auto; overscroll-behavior: contain; }
+.q-chip.neg.on { background: var(--danger, #ff453a); border-color: var(--danger, #ff453a); color: #fff; }

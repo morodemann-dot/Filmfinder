@@ -160,6 +160,9 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
     info: {
       directors: r.title.directors, cast_names: r.title.cast_names?.slice(0, 3), genres: r.title.genres, wd_genres: r.title.wd_genres,
       composers: r.title.composers?.slice(0, 1), cinematographers: r.title.cinematographers?.slice(0, 1), based_on: r.title.based_on,
+      writers: r.title.writers?.slice(0, 1), keywords: r.title.keywords?.slice(0, 15), main_subjects: r.title.main_subjects,
+      set_in_period: r.title.set_in_period, narrative_locations: r.title.narrative_locations, runtime_seconds: r.title.runtime_seconds,
+      certification_de: r.title.certification_de, collection_name: r.title.collection_name,
     },
   }));
   const inDeck = new Set(picks.map((p) => p.id));
@@ -262,7 +265,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
           <>
             <div className="eyebrow" style={{ margin: "14px 0 8px" }}>Aus deinen Antworten</div>
             <div className="tags" style={{ marginBottom: 0 }}>
-              {aspectList.map((a) => <span key={a.label} className="tag">{a.label} · {a.n}×</span>)}
+              {aspectList.map((a) => <span key={a.label} className="tag">{a.label}</span>)}
             </div>
           </>
         )}

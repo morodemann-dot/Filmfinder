@@ -41,7 +41,7 @@ export default function QuickRate({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [detail, setDetail] = useDetailMode();
   const [question, setQuestion] = useState<
-    { kind: "reason"; t: RateCandidate } | { kind: "aspect"; t: RateCandidate; mode: "pos" | "neg" } | null
+    { kind: "reason"; t: RateCandidate } | { kind: "aspect"; t: RateCandidate; rating: number } | null
   >(null);
   const saving = useRef(new Map<number, Promise<unknown>>());
 
@@ -89,8 +89,8 @@ export default function QuickRate({
     start(async () => { await p; });
     // Kurze Fragen: bei klaren Urteilen ab und zu, im ausführlichen Modus immer
     if (status === "gesehen") {
-      const mode = shouldAskAspects(rating);
-      setQuestion(mode ? { kind: "aspect", t, mode } : null);
+      const r = shouldAskAspects(rating);
+      setQuestion(r != null ? { kind: "aspect", t, rating: r } : null);
     } else if (status === "nicht_interessiert" && detail) {
       setQuestion({ kind: "reason", t });
     } else setQuestion(null);
@@ -196,7 +196,7 @@ export default function QuickRate({
       </label>
       {error && <p className="error">{error}</p>}
       {question?.kind === "reason" && <ReasonSheet title={question.t.title} onDone={answerReason} />}
-      {question?.kind === "aspect" && <AspectSheet title={question.t.title} info={question.t} mode={question.mode} onDone={answerAspects} />}
+      {question?.kind === "aspect" && <AspectSheet title={question.t.title} info={question.t} rating={question.rating} onDone={answerAspects} />}
     </div>
   );
 }

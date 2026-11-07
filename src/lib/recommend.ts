@@ -10,6 +10,7 @@
 // Stufe 2 ergänzt später die tiefen Merkmale (Stimmung, Komplexität, Humor …).
 
 import type { Title } from "./types";
+import { aspectStrength } from "./aspects";
 import { AI_SCALES, type AiScale } from "./aiFeatures";
 
 // reason: Grund bei "Kein Interesse"; aspects: was gefallen/gestört hat ("+regie:Nolan", "-aspekt:langatmig")
@@ -110,6 +111,8 @@ export function featuresOf(t: Title): Feature[] {
   for (const g of t.wd_genres ?? []) if (!GENERIC_SUBGENRES.has(g)) f.push({ key: `subgenre:${g}`, kind: "subgenre", label: g });
   for (const k of (t.keywords ?? []).slice(0, 15)) if (!NOISE_KEYWORDS.has(k)) f.push({ key: `thema:${k}`, kind: "thema", label: k });
   for (const m of t.main_subjects ?? []) f.push({ key: `thema:${m}`, kind: "thema", label: m.replace(/^Person: /, "") });
+  for (const p of t.set_in_period ?? []) f.push({ key: `thema:zeit:${p}`, kind: "thema", label: `spielt ${p}` });
+  for (const l of t.narrative_locations ?? []) f.push({ key: `thema:ort:${l}`, kind: "thema", label: `Schauplatz ${l}` });
   for (const w of (t.writers ?? []).slice(0, 3)) f.push({ key: `drehbuch:${w}`, kind: "drehbuch", label: w });
   for (const c of t.cinematographers ?? []) f.push({ key: `kamera:${c}`, kind: "kamera", label: c });
   for (const c of t.composers ?? []) f.push({ key: `musik:${c}`, kind: "musik", label: c });
@@ -247,22 +250,24 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     }
   };
   // Kurze Fragen: "Regie: Nolan hat gefallen" usw. = starke, eindeutige Beobachtung
+  // Gewicht je nach Bewertung: "Regie top" bei einer 10 zählt mehr als bei einer 7 (siehe aspectStrength)
   const aspectCounts = new Map<string, { pos: number; neg: number }>();
   for (const r of rated) {
     for (const a of r.aspects ?? []) {
       const sign = a.startsWith("-") ? -1 : 1;
       const key = a.slice(1);
+      const w = aspectStrength(sign as 1 | -1, r.rating);
       if (key.startsWith("aspekt:")) {
         const c = aspectCounts.get(key) ?? { pos: 0, neg: 0 };
-        if (sign > 0) c.pos++; else c.neg++;
+        if (sign > 0) c.pos += w; else c.neg += w;
         aspectCounts.set(key, c);
         continue;
       }
       const f = featuresOf(r).find((x) => x.key === key);
       if (f) {
         const acc0 = acc.get(f.key) ?? { f, sumW: 0, sumWD: 0, n: 0, sumR: 0 };
-        acc0.sumW += 1.5;
-        acc0.sumWD += 1.5 * sign * 2.5;
+        acc0.sumW += 1.5 * w;
+        acc0.sumWD += 1.5 * w * sign * 2.5;
         acc.set(f.key, acc0);
       }
     }
@@ -341,6 +346,8 @@ export const ASPECT_LABELS: Record<string, [string, string]> = {
   "aspekt:gefuehl": ["Emotionen", "–"], "aspekt:wendungen": ["Wendungen", "–"], "aspekt:humor": ["Humor", "Humor, der nicht passt"],
   "aspekt:schauspiel": ["Schauspiel", "–"], "aspekt:langatmig": ["–", "zu langatmig"], "aspekt:vorhersehbar": ["–", "zu vorhersehbar"],
   "aspekt:brutal": ["–", "zu brutal"], "aspekt:kitsch": ["–", "zu kitschig"], "aspekt:laut": ["–", "zu viel Action / Krach"],
+  "aspekt:figuren": ["starke Figuren", "blasse Figuren"], "aspekt:tiefgang": ["Tiefgang", "fehlender Tiefgang"],
+  "aspekt:ende": ["ein gutes Ende", "schwaches Ende"], "aspekt:dialoge": ["Dialoge", "–"], "aspekt:fortsetzung": ["–", "ausgereizte Reihen"],
 };
 function aspectAdjust(t: Title, counts: Map<string, { pos: number; neg: number }>) {
   if (!counts.size) return 0;
@@ -353,6 +360,9 @@ function aspectAdjust(t: Title, counts: Map<string, { pos: number; neg: number }
   if (g.has("Thriller") || g.has("Mystery")) x += 0.1 * (c("aspekt:spannung").pos + c("aspekt:wendungen").pos);
   if (g.has("Liebesfilm")) x -= 0.15 * c("aspekt:kitsch").neg;
   if (g.has("Action")) x -= 0.1 * c("aspekt:laut").neg;
+  if (t.collection_id) x -= 0.1 * c("aspekt:fortsetzung").neg;
+  if (g.has("Drama")) x += 0.05 * (c("aspekt:tiefgang").pos + c("aspekt:tiefgang").neg); // Tiefgang gefiel / fehlte → mehr Tiefgang
+  if (g.has("Thriller") || g.has("Krimi")) x -= 0.08 * c("aspekt:vorhersehbar").neg * ((t.vote_average ?? 7) < 6.8 ? 1 : 0);
   return Math.max(-0.6, Math.min(0.6, x));
 }
 

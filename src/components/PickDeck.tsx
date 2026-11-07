@@ -23,7 +23,7 @@ export type Pick = {
   info?: AspectInfo; // für konkrete Antwortmöglichkeiten bei den kurzen Fragen
 };
 
-type Question = { kind: "reason"; pick: Pick } | { kind: "aspect"; pick: Pick; mode: "pos" | "neg" } | null;
+type Question = { kind: "reason"; pick: Pick } | { kind: "aspect"; pick: Pick; rating: number } | null;
 
 type Action = "skip" | "nein" | "merken" | "gesehen";
 const THRESHOLD = 90;
@@ -79,8 +79,8 @@ export default function PickDeck({ picks: incoming, deckKey }: { picks: Pick[]; 
     }
     if (action === "nein") setQuestion({ kind: "reason", pick: p });
     else if (action === "gesehen") {
-      const mode = shouldAskAspects(score);
-      setQuestion(mode ? { kind: "aspect", pick: p, mode } : null);
+      const r = shouldAskAspects(score);
+      setQuestion(r != null ? { kind: "aspect", pick: p, rating: r } : null);
     } else setQuestion(null);
   }
 
@@ -264,7 +264,7 @@ export default function PickDeck({ picks: incoming, deckKey }: { picks: Pick[]; 
       {error && <p className="error" style={{ textAlign: "center" }}>{error}</p>}
       {question?.kind === "reason" && <ReasonSheet title={question.pick.title} onDone={answerReason} />}
       {question?.kind === "aspect" && (
-        <AspectSheet title={question.pick.title} info={question.pick.info ?? {}} mode={question.mode} onDone={answerAspects} />
+        <AspectSheet title={question.pick.title} info={question.pick.info ?? {}} rating={question.rating} onDone={answerAspects} />
       )}
     </div>
   );

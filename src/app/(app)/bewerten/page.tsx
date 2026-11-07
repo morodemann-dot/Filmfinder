@@ -6,7 +6,7 @@ import { rankLikelySeen, type RateCandidate, type SeenTitle } from "@/lib/likely
 // "Schnell bewerten": ein Titel nach dem anderen.
 // Reihenfolge: zuerst Filme, die du wahrscheinlich schon gesehen hast (Reihen, Regie, Besetzung, Bekanntheit).
 
-const COLS = "id,title,poster_path,release_year,format,genres,directors,cast_names,collection_id,collection_name,popularity,wd_genres,composers,cinematographers,based_on";
+const COLS = "id,title,poster_path,release_year,format,genres,directors,cast_names,collection_id,collection_name,popularity,wd_genres,composers,cinematographers,based_on,writers,keywords,main_subjects,set_in_period,narrative_locations,runtime_seconds,certification_de";
 
 export default async function RatePage() {
   const supabase = await createClient();
