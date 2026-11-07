@@ -5,7 +5,7 @@ import PickDeck, { type Pick } from "@/components/PickDeck";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { loadTasteData } from "@/lib/tasteData";
 import { tuneOptions } from "@/lib/evaluate";
-import { buildProfile, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences, type Recommendation } from "@/lib/recommend";
+import { APP_SETTINGS, buildProfile, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences, type Recommendation } from "@/lib/recommend";
 import { MOODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
 import { formatRuntime } from "@/lib/types";
 
@@ -42,8 +42,9 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const { rated, catalog } = await loadTasteData(supabase, user!.id);
   const seen = new Set(rated.map((r) => r.id));
   // Persönliche Mischung aus Qualität und Geschmack – per Messtest an deinen Bewertungen gewählt
-  const { opts } = tuneOptions(rated);
-  // Mit Katalog: lernt auch, welche ART von Filmen du schaust (Interesse)
+  const tuned = tuneOptions(rated).opts;
+  // Interesse (welche ART von Filmen du schaust) + halbe allgemeine Qualität – im Modell-Duell am treffsichersten
+  const opts = { ...tuned, ...APP_SETTINGS };
   const profile = buildProfile(rated, opts, catalog);
   const { prefs, ratedCount } = profile;
 
@@ -139,7 +140,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
       <details className="panel" style={{ marginTop: 28 }}>
         <summary className="eyebrow" style={{ cursor: "pointer" }}>Was die App über dich gelernt hat</summary>
         <p className="caption">
-          Basierend auf {ratedCount} Bewertungen. Bisher berücksichtigt: Genre, feine Genres, Regie, Besetzung, Drehbuch, Kamera, Musik, Themen, Vorlage, Filmreihen, Preise & Nominierungen, Budget, Schwarzweiß – plus die allgemeine Qualität (TMDB-Bewertung) als Sicherheitsnetz.
+          Basierend auf {ratedCount} Bewertungen. Bisher berücksichtigt: Genre, feine Genres, Regie, Besetzung, Drehbuch, Kamera, Musik, Themen, Vorlage, Filmreihen, Preise & Nominierungen, Budget, Schwarzweiß – vor allem aber, welche Art von Filmen du schaust (Interesse) – plus die allgemeine Qualität (TMDB-Bewertung) als Sicherheitsnetz.
           Stimmungen beruhen vorerst auf Genres – mit Stufe 2 (KI-Merkmale wie Grundstimmung, Spannung, Humor) werden sie genauer.
         </p>
         <div className="tags" style={{ marginBottom: 0 }}>

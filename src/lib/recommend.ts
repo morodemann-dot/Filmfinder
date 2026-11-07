@@ -84,7 +84,12 @@ export type ScoreOptions = {
   skipKinds?: FeatureKind[]; // Merkmalsarten weglassen (nur für den Messtest)
 };
 export const DEFAULT_OPTIONS: Required<Omit<ScoreOptions, "skipKinds" | "interestWeight">> = { qualityWeight: 1, tasteWeight: 1, shrink: 2 };
-export const DEFAULT_INTEREST = 1; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
+export const DEFAULT_INTEREST = 1;
+
+// Einstellung für Vorschläge unbekannter Filme (Filmfinder) – festgelegt per Modell-Duell
+// (325 Antworten, Nov. 2026): Interesse ×1 mit halber allgemeiner Qualität lag vorn (72 %),
+// "Bisher" (v. a. Qualität) bei 47 %, KI-Merkmale (Haiku) brachten nichts dazu.
+export const APP_SETTINGS = { interestWeight: 1, qualityWeight: 0.5 } as const; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
 
 type Feature = { key: string; kind: FeatureKind; label: string };
 

@@ -24,14 +24,15 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "i3", name: "Interesse ×3", interest: DEFAULT_INTEREST * 3 },
   { key: "i2_q05", name: "Interesse ×2 · Qualität halb", interest: DEFAULT_INTEREST * 2, quality: 0.5 },
   { key: "i2_q0", name: "Interesse ×2 · ohne Qualität", interest: DEFAULT_INTEREST * 2, quality: 0 },
-  { key: "i1_q05", name: "Interesse · Qualität halb", interest: DEFAULT_INTEREST, quality: 0.5 },
+  { key: "i1_q05", name: "App jetzt: Interesse · Qualität halb", interest: DEFAULT_INTEREST, quality: 0.5 },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 
 // Wer tritt in neuen Runden gegeneinander an?
 // Runde 1–5: ohne / Haiku / Haiku nur KI (alle 38 %). Rücktest: Interesse ~75 %, KI bringt nichts dazu.
-// Jetzt: Interesse normal vs. ×2 vs. mit Haiku (alle Merkmale)
-export const DUEL_SOURCES: SourceDef[] = [byKey("interesse"), byKey("interesse_stark"), byKey("interesse_haiku")];
+// Runde 6–?: Interesse ×1 / ×2 / +Haiku → Haiku klar schwächer (55 %).
+// Jetzt: App-Einstellung vs. Interesse ×2 vs. ganz ohne Qualität
+export const DUEL_SOURCES: SourceDef[] = [byKey("i1_q05"), byKey("interesse_stark"), byKey("i2_q0")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
 export const EVAL_SOURCES: SourceDef[] = ["ohne", "interesse", "i15", "interesse_stark", "i3", "i1_q05", "i2_q05", "i2_q0", "interesse_haiku"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
