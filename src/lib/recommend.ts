@@ -116,6 +116,8 @@ export const DEFAULT_INTEREST = 1;
 export const APP_SETTINGS: ScoreOptions = {
   interestWeight: 1, qualityWeight: 0.5,
   interestByRating: true, similarityWeight: 2, rareKeywords: true, originWeight: 0.4, genreQuality: true, genrePairWeight: 0.6,
+  // Nov. 2026 (797 Antworten, fairer 5-fach-Test): Duell-Antworten mitlernen 73 % → 79 % ("sehr stark" = 4; 8 nicht besser)
+  duelWeight: 4,
 };
 
 type Feature = { key: string; kind: FeatureKind; label: string };

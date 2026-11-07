@@ -1,5 +1,6 @@
 "use server";
 
+
 // Modell-Duell: Die App schlägt Filme vor – je Quelle (ohne KI, Haiku, Sonnet) –, du bewertest blind,
 // ob sie zu dir passen. Die Antworten landen NICHT in deinem Geschmacksprofil, nur in der Tabelle ai_duel.
 
@@ -7,7 +8,7 @@ import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabas
 import { fetchAll } from "@/lib/fetchAll";
 import { loadAiFeatures, loadTasteData } from "@/lib/tasteData";
 import { MIN_FOR_TEST } from "@/lib/evaluate";
-import { diversify, franchiseOf, pickDiverse, SUGGEST_FROM_YEAR } from "@/lib/recommend";
+import { diversify, duelEntries, franchiseOf, pickDiverse, SUGGEST_FROM_YEAR } from "@/lib/recommend";
 import { formatRuntime } from "@/lib/types";
 import { ALL_SOURCES, DUEL_MODELS, DUEL_SOURCES, rankWith } from "@/lib/duel";
 
@@ -85,9 +86,13 @@ export async function duelStartRound(): Promise<{ cards: number; sources: string
     const sources = active.map((s) => s.key);
 
     const picks = new Map<number, Set<string>>();
+    // 7) bisherige Duell-Antworten als Lernstoff (nur Varianten mit duelWeight nutzen sie)
+    const byIdAll = new Map(catalog.map((t) => [t.id, t]));
+    const learnFromDuel = duelEntries(new Map(rows.filter((r) => r.answer === "passt" || r.answer === "passt_nicht")
+      .map((r) => [r.title_id, r.answer === "passt"] as [number, boolean])), byIdAll);
     let mainRanked: ReturnType<typeof rankWith> = [];
     for (const src of active) {
-      const ranked = rankWith(src, rated, catalog, ai, fair);
+      const ranked = rankWith(src, rated, catalog, ai, fair, learnFromDuel);
       if (src === active[0]) mainRanked = ranked;
       // Abwechslung: weitere Filme derselben Reihe/Regie bekommen einen kleinen Abzug
       const best = pickDiverse(ranked, PICKS_PER_ROUND);

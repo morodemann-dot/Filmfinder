@@ -36,14 +36,14 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "v4", name: "+ 4 Herkunft, Sprache, Studio", ...APP, extra: { originWeight: 0.4 } },
   { key: "v5", name: "+ 5 Qualität je Genre", ...APP, extra: { genreQuality: true } },
   { key: "v6", name: "+ 6 Genre-Kombinationen", ...APP, extra: { genrePairWeight: 0.6 } },
-  { key: "vall", name: "Neue App: alle Verbesserungen 1–6", ...APP, extra: ALL_EXTRAS },
+  { key: "vall", name: "Vorherige App: Verbesserungen 1–6", ...APP, extra: ALL_EXTRAS },
   { key: "vall_nosim", name: "Alle Verbesserungen ohne Ähnlichkeit", ...APP, extra: { ...ALL_EXTRAS, similarityWeight: 0 } },
   { key: "vall_q0", name: "Alle Verbesserungen ohne Qualität", ...APP, quality: 0, extra: ALL_EXTRAS },
   // 7) Duell-Antworten als Lernstoff (fair getestet: gelernt wird nur aus den jeweils anderen Antworten)
   { key: "d05", name: "+ 7 Duell-Antworten (leicht)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 0.5 } },
   { key: "d1", name: "+ 7 Duell-Antworten", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 1 } },
   { key: "d2", name: "+ 7 Duell-Antworten (stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 2 } },
-  { key: "d4", name: "+ 7 Duell-Antworten (sehr stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4 } },
+  { key: "d4", name: "Neueste App: + Duell-Antworten", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4 } },
   { key: "d8", name: "+ 7 Duell-Antworten (extrem)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 8 } },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
@@ -55,7 +55,8 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Runde 1–5: ohne / Haiku / Haiku nur KI (alle 38 %). Rücktest: Interesse ~75 %, KI bringt nichts dazu.
 // Danach: App vs. Interesse ×2 vs. ohne Qualität; dann App vs. alle Verbesserungen vs. Ähnlichkeit (5 Runden).
 // Jetzt (aus dem ganzen Katalog): neue App (alle 1–6) vs. alte App vs. alle ohne Ähnlichkeit
-export const DUEL_SOURCES: SourceDef[] = [byKey("vall"), byKey("i1_q05"), byKey("vall_nosim")];
+// Ab Nov. 2026 (Runde mit Duell-Lernen): App mit Duell-Antworten vs. vorherige App vs. alte App
+export const DUEL_SOURCES: SourceDef[] = [byKey("d4"), byKey("vall"), byKey("i1_q05")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
 export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "vall_nosim", "d05", "d1", "d2", "d4", "d8"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
