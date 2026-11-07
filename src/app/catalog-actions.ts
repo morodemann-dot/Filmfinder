@@ -350,34 +350,40 @@ export async function aiPilotStatus(): Promise<AiStatus[] | null> {
 }
 
 // Schätzt die nächsten paar deiner bewerteten Filme ein (Haiku 6, Sonnet 3 – Sonnet ist langsamer). Die Seite ruft das so lange auf, bis alle fertig sind.
-export async function aiPilotChunk(model: AiModelKey): Promise<{ done: number; remaining: number; errors: string[] }> {
-  await requireAdmin();
-  if (!(model in AI_MODELS)) throw new Error("Unbekanntes Modell.");
-  const admin = createAdminClient();
-  const ids = await myRatedIds();
-  const { data: have, error } = await admin.from("title_features").select("title_id").eq("model", model).limit(10000);
-  if (error) throw new Error(error.message + " (wurde die Ergänzung 13 im SQL Editor ausgeführt?)");
-  const done = new Set((have ?? []).map((r) => r.title_id as number));
-  const todo = ids.filter((id) => !done.has(id));
-  const batch = todo.slice(0, model === "sonnet" ? 3 : 6);
-  if (!batch.length) return { done: 0, remaining: 0, errors: [] };
+// Fehler werden als Text zurückgegeben (nicht geworfen) – sonst blendet Next.js sie in der
+// veröffentlichten Version aus, und man sieht nur "Verbindung abgebrochen".
+export async function aiPilotChunk(model: AiModelKey): Promise<{ done: number; remaining: number; errors: string[]; fatal?: string }> {
+  try {
+    await requireAdmin();
+    if (!(model in AI_MODELS)) return { done: 0, remaining: 0, errors: [], fatal: "Unbekanntes Modell." };
+    const admin = createAdminClient();
+    const ids = await myRatedIds();
+    const { data: have, error } = await admin.from("title_features").select("title_id").eq("model", model).limit(10000);
+    if (error) return { done: 0, remaining: 0, errors: [], fatal: error.message + " (wurde die Ergänzung 13 im SQL Editor ausgeführt?)" };
+    const done = new Set((have ?? []).map((r) => r.title_id as number));
+    const todo = ids.filter((id) => !done.has(id));
+    const batch = todo.slice(0, model === "sonnet" ? 2 : 6);
+    if (!batch.length) return { done: 0, remaining: 0, errors: [] };
 
-  const { data: films } = await admin.from("titles")
-    .select("id,tmdb_id,media_type,title,original_title,release_year,directors,cast_names,genres,overview").in("id", batch);
-  const movies = (films ?? []) as (FilmInput & { id: number; tmdb_id: number; media_type: string })[];
-  const plots = await wikipediaPlots(movies.filter((f) => f.media_type === "movie").map((f) => f.tmdb_id));
+    const { data: films } = await admin.from("titles")
+      .select("id,tmdb_id,media_type,title,original_title,release_year,directors,cast_names,genres,overview").in("id", batch);
+    const movies = (films ?? []) as (FilmInput & { id: number; tmdb_id: number; media_type: string })[];
+    const plots = await wikipediaPlots(movies.filter((f) => f.media_type === "movie").map((f) => f.tmdb_id));
 
-  const errors: string[] = [];
-  const results = await mapLimit(movies, 6, async (f) => {
-    const plot = f.media_type === "movie" ? plots.get(f.tmdb_id) ?? null : null;
-    const r = await rateFilm(model, f, plot);
-    const { error: e } = await admin.from("title_features").upsert({
-      title_id: f.id, model, features: r.features, had_plot: !!plot, input_tokens: r.inputTokens, output_tokens: r.outputTokens,
+    const results = await mapLimit(movies, 6, async (f) => {
+      const plot = f.media_type === "movie" ? plots.get(f.tmdb_id) ?? null : null;
+      const r = await rateFilm(model, f, plot);
+      const { error: e } = await admin.from("title_features").upsert({
+        title_id: f.id, model, features: r.features, had_plot: !!plot, input_tokens: r.inputTokens, output_tokens: r.outputTokens,
+      });
+      if (e) throw new Error(e.message);
     });
-    if (e) throw new Error(e.message);
-  });
-  for (const r of results) if (r.status === "rejected") errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason));
-  // Bei grundsätzlichen Fehlern (Schlüssel, Guthaben) sofort abbrechen
-  if (errors.length === results.length) throw new Error(errors[0]);
-  return { done: results.length - errors.length, remaining: todo.length - (results.length - errors.length), errors };
+    const errors = results.flatMap((r) => (r.status === "rejected" ? [r.reason instanceof Error ? r.reason.message : String(r.reason)] : []));
+    const ok = results.length - errors.length;
+    // Klappt kein einziger Film, ist es ein grundsätzliches Problem (Schlüssel, Guthaben, Modell) → anhalten
+    if (ok === 0) return { done: 0, remaining: todo.length, errors, fatal: errors[0] };
+    return { done: ok, remaining: todo.length - ok, errors };
+  } catch (e) {
+    return { done: 0, remaining: 0, errors: [], fatal: e instanceof Error ? e.message : String(e) };
+  }
 }

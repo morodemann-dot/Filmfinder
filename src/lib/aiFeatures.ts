@@ -129,6 +129,9 @@ export async function rateFilm(model: AiModelKey, film: FilmInput, plot: string 
       messages: [{ role: "user", content: info }],
     }),
     cache: "no-store",
+    signal: AbortSignal.timeout(50_000), // lieber selbst abbrechen als von Vercel abgeschnitten werden
+  }).catch((e) => {
+    throw new Error(e?.name === "TimeoutError" ? "Die KI hat zu lange gebraucht (über 50 Sekunden)." : `Keine Verbindung zur KI: ${e?.message ?? e}`);
   });
   const j = await res.json().catch(() => null);
   if (!res.ok) {
@@ -166,17 +169,17 @@ export async function wikipediaPlots(tmdbIds: number[]): Promise<Map<number, str
     if (r.ok) rows = (await r.json()).results.bindings;
   } catch { /* ohne Handlung weitermachen */ }
 
-  for (const row of rows) {
+  await Promise.all(rows.map(async (row) => {
     try {
       const url = "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&formatversion=2&redirects=1&titles=" +
         encodeURIComponent(row.t.value);
       const r = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
-      if (!r.ok) continue;
+      if (!r.ok) return;
       const text: string = (await r.json())?.query?.pages?.[0]?.extract ?? "";
       const plot = extractPlot(text);
       if (plot) out.set(Number(row.tmdb.value), plot);
     } catch { /* einzelner Film ohne Handlung ist kein Problem */ }
-  }
+  }));
   return out;
 }
 

@@ -15,6 +15,7 @@ export default function AiPilot({ status }: { status: AiStatus[] | null }) {
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [skipped, setSkipped] = useState(0);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   if (!status) {
     return (
@@ -37,18 +38,19 @@ export default function AiPilot({ status }: { status: AiStatus[] | null }) {
         } catch (e) {
           // Kurze Verbindungsabbrüche: automatisch weitermachen (bereits Fertiges bleibt gespeichert)
           const msg = e instanceof Error ? e.message : String(e);
-          const transient = !/ANTHROPIC|Schlüssel|Guthaben|Ergänzung|Admin|KI-Fehler 4/.test(msg);
+          const transient = !msg.includes("[kein Neuversuch]");
           if (transient && retries < 3) { retries++; await new Promise((ok) => setTimeout(ok, 3000)); continue; }
           throw transient ? new Error("Verbindung zum Server mehrfach abgebrochen – einfach nochmal starten, Fertiges bleibt erhalten.") : e;
         }
         done += r.done;
         setProgress((p) => ({ ...p, [model]: done }));
-        if (r.errors.length) setSkipped((s) => s + r.errors.length);
+        if (r.fatal) throw new Error(r.fatal + " [kein Neuversuch]");
+        if (r.errors.length) { setSkipped((s) => s + r.errors.length); setLastError(r.errors[0]); }
         if (r.remaining === 0 || r.done === 0) break;
       }
       router.refresh();
     } catch (e) {
-      setError("Angehalten: " + (e instanceof Error ? e.message : String(e)));
+      setError("Angehalten: " + (e instanceof Error ? e.message : String(e)).replace(" [kein Neuversuch]", ""));
       router.refresh();
     } finally {
       setRunning(null);
@@ -81,7 +83,7 @@ export default function AiPilot({ status }: { status: AiStatus[] | null }) {
         );
       })}
       {running && <p className="caption" style={{ margin: 0 }}>Seite bitte offen lassen – ca. 1–2 Sekunden pro Film.</p>}
-      {skipped > 0 && <p className="caption" style={{ margin: 0 }}>{skipped} Filme übersprungen (werden beim nächsten Start erneut versucht).</p>}
+      {skipped > 0 && <p className="caption" style={{ margin: 0 }}>{skipped} Filme übersprungen (werden beim nächsten Start erneut versucht){lastError ? ` – Grund: ${lastError}` : ""}.</p>}
       {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
       {anyDone && !running && <Link href="/messtest" className="btn primary">Zum Messtest ›</Link>}
     </div>
