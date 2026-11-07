@@ -7,7 +7,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { loadSnoozed, loadTasteData } from "@/lib/tasteData";
 import { tuneOptions } from "@/lib/evaluate";
 import {
-  APP_SETTINGS, ASPECT_LABELS, buildProfile, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences,
+  APP_SETTINGS, ASPECT_LABELS, buildProfile, franchiseOf, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences,
   type RatedTitle, type Recommendation,
 } from "@/lib/recommend";
 import { MODES, MOODS, PERIODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
@@ -50,7 +50,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const mood = MOODS.find((m) => m.key === sp.stimmung) ?? null;
   const time = (sp.zeit && sp.zeit in TIMES ? sp.zeit : "egal") as TimeKey;
   const period = PERIODS[sp.zeitraum ?? ""] ?? PERIODS.alle;
-  const mode = sp.modus && sp.modus in MODES ? sp.modus : "sicher";
+  const mode = sp.modus && sp.modus in MODES ? sp.modus : "entdecken";
 
   const supabase = await createClient();
   const user = await getUser();
@@ -95,7 +95,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
     { key: "genre", label: "Genre", all: "Alle Genres", options: [...genreCount.entries()].filter(([, n]) => n >= 5).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([g]) => ({ value: g, label: g })) },
     { key: "zeit", label: "Länge", all: "Jede Länge", options: (Object.keys(TIMES) as TimeKey[]).filter((k) => k !== "egal").map((k) => ({ value: k, label: TIMES[k].label })) },
     { key: "zeitraum", label: "Zeitraum", all: "Seit 1990", options: Object.entries(PERIODS).filter(([k]) => k !== "alle").map(([k, p]) => ({ value: k, label: p.label })) },
-    { key: "modus", label: "Sichere Wahl", all: "Sichere Wahl", options: Object.entries(MODES).filter(([k]) => k !== "sicher").map(([k, label]) => ({ value: k, label })) },
+    { key: "modus", label: "Entdecken", all: "Entdecken", options: Object.entries(MODES).filter(([k]) => k !== "entdecken").map(([k, label]) => ({ value: k, label })) },
   ];
   if (friendsAvailable.length) {
     filters.unshift({ key: "mit", label: "Allein", all: "Allein schauen", options: friendsAvailable.map((f) => ({ value: f.id, label: `Mit ${f.name}` })) });
@@ -113,11 +113,27 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   // Gemeinsam schauen: auch was der Freund schon kennt, fällt raus
   const friend = mitFriend ? await friendRated(mitFriend.id, catalog) : [];
   const friendSeen = new Set(friend.map((r) => r.id));
-  const candidates = recent.filter(
+  const matching = recent.filter(
     (t) => !seen.has(t.id) && !friendSeen.has(t.id) && (t.release_year ?? 0) >= period.from && (t.release_year ?? 0) <= period.to &&
       (!mood || matchesMood(t, mood)) && (!sp.genre || (t.genres ?? []).includes(sp.genre)) && matchesTime(t, time) && byMode(t),
   );
+  // Entdecken: Reihen und Universen, aus denen du schon etwas gesehen (oder abgelehnt) hast, kennst du vermutlich –
+  // wer Star Wars 7 gesehen hat, kennt 8 und 9. Diese Filme kommen nicht in den Stapel, sondern unten in "Kennst du die schon?".
+  const knownFranchises = new Set(
+    rated.filter((r) => r.status === "gesehen" || r.status === "nicht_interessiert").map(franchiseOf).filter((x): x is string => !!x),
+  );
+  const discover = mode === "entdecken";
+  const probablyKnown = discover ? matching.filter((t) => { const f = franchiseOf(t); return !!f && knownFranchises.has(f); }) : [];
+  const knownSet = new Set(probablyKnown.map((t) => t.id));
+  const candidates = matching.filter((t) => !knownSet.has(t.id));
   let recs = recommend(candidates, profile, opts).filter((r) => r.reasons.length > 0);
+  if (discover) {
+    // Sehr bekannte Filme (oberste 15 % nach Bekanntheit) etwas nach hinten – die hast du eher schon auf dem Schirm
+    const rank = new Map([...recent].sort((a, b) => (a.popularity ?? 0) - (b.popularity ?? 0)).map((t, i, arr) => [t.id, i / Math.max(1, arr.length - 1)]));
+    recs = recs
+      .map((r) => ({ ...r, score: r.score - 0.4 * Math.max(0, ((rank.get(r.title.id) ?? 0) - 0.85) / 0.15) }))
+      .sort((a, b) => b.score - a.score);
+  }
   if (mitFriend) {
     // Für euch beide: Durchschnitt beider Werte, aber mit Abzug, wenn es nur einem gefällt
     const fOpts = { ...tuneOptions(friend).opts, ...APP_SETTINGS };
@@ -208,6 +224,9 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
       ))}
       <Row title="Leute mit ähnlichem Geschmack mochten" sub="aus der App, anonym" items={neighborRow} />
       <Row title="Geheimtipps für dich" sub="wenig bekannt, passt aber" items={gems.map((r) => ({ t: r.title, caption: shortReason(r) }))} />
+      <Row title="Kennst du die schon?" sub="aus Reihen, die du kennst – antippen & bewerten"
+        items={probablyKnown.sort((a, b) => (a.release_year ?? 0) - (b.release_year ?? 0)).slice(0, 15)
+          .map((t) => ({ t, caption: t.collection_name ?? franchiseOf(t)?.replace(/^reihe:\d+$/, "") ?? String(t.release_year ?? "") }))} />
       <Row title="Von deiner Merkliste" items={watchlist.slice(0, 15).map((t) => ({ t, caption: String(t.release_year ?? "") }))} />
       <Row title="Weitere Ideen" items={more.map((r) => ({ t: r.title, caption: shortReason(r) }))} />
 

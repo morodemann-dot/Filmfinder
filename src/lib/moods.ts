@@ -89,7 +89,11 @@ export const PERIODS: Record<string, { label: string; from: number; to: number }
 };
 
 // Art der Auswahl
+// "Entdecken" (Standard): Filme, die du wahrscheinlich noch nicht auf dem Schirm hast –
+// keine weiteren Teile von Reihen/Universen, die du schon kennst, sehr bekannte Filme etwas weiter hinten.
+// "Sichere Wahl": alles, was gut passt – auch Fortsetzungen.
 export const MODES: Record<string, string> = {
+  entdecken: "Entdecken",
   sicher: "Sichere Wahl",
   geheimtipp: "Geheimtipps",
   bekannt: "Bekannte Filme",
