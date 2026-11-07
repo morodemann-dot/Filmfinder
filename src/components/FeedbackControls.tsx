@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setFeedback } from "@/app/actions";
+import { saveAspects, saveFeedbackQuiet, setFeedback } from "@/app/actions";
 import Score from "./Score";
+import { AspectSheet, ReasonSheet } from "./QuestionSheet";
+import { shouldAskAspects, type AspectInfo, type ReasonKey } from "@/lib/aspects";
 import type { Status } from "@/lib/types";
 
 // Bewerten und Status setzen auf der Detailseite.
@@ -10,11 +12,16 @@ export default function FeedbackControls({
   titleId,
   initialStatus,
   initialRating,
+  title,
+  info,
 }: {
   titleId: number;
   initialStatus: Status | null;
   initialRating: number | null;
+  title?: string;
+  info?: AspectInfo;
 }) {
+  const [question, setQuestion] = useState<"reason" | "pos" | "neg" | null>(null);
   const [status, setStatus] = useState<Status | null>(initialStatus);
   const [rating, setRating] = useState<number | null>(initialRating);
   const [pending, start] = useTransition();
@@ -31,6 +38,8 @@ export default function FeedbackControls({
       try {
         await setFeedback(titleId, s, r);
         setSaved(true);
+        if (title && s === "gesehen" && r != null) setQuestion(shouldAskAspects(r));
+        else if (title && s === "nicht_interessiert") setQuestion("reason");
       } catch {
         setStatus(prev.status);
         setRating(prev.rating);
@@ -65,6 +74,18 @@ export default function FeedbackControls({
         {pending ? "Speichere …" : saved ? "✓ Gespeichert" : ""}
       </div>
       {error && <p className="error">{error}</p>}
+      {question === "reason" && title && (
+        <ReasonSheet title={title} onDone={(r: ReasonKey | null) => {
+          setQuestion(null);
+          if (r && r !== "spaeter") saveFeedbackQuiet(titleId, "nicht_interessiert", null, r).catch(() => {});
+        }} />
+      )}
+      {(question === "pos" || question === "neg") && title && (
+        <AspectSheet title={title} info={info ?? {}} mode={question} onDone={(list) => {
+          setQuestion(null);
+          if (list.length) saveAspects(titleId, list).catch(() => {});
+        }} />
+      )}
     </div>
   );
 }

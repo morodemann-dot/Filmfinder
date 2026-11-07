@@ -12,7 +12,8 @@
 import type { Title } from "./types";
 import { AI_SCALES, type AiScale } from "./aiFeatures";
 
-export type RatedTitle = Title & { rating: number | null; status: string };
+// reason: Grund bei "Kein Interesse"; aspects: was gefallen/gestört hat ("+regie:Nolan", "-aspekt:langatmig")
+export type RatedTitle = Title & { rating: number | null; status: string; reason?: string | null; aspects?: string[] };
 
 export type FeatureKind =
   | "genre" | "regie" | "besetzung" | "reihe" | "jahrzehnt" | "preise"
@@ -117,6 +118,7 @@ export function featuresOf(t: Title): Feature[] {
     if (kind) f.push({ key: `vorlage:${kind}`, kind: "vorlage", label: `nach ${kind === "wahre Person" ? "wahrer Geschichte" : kind}` });
   }
   if (t.black_and_white) f.push({ key: "stil:sw", kind: "stil", label: "Schwarzweiß-Filme" });
+  if (t.certification_de === "16" || t.certification_de === "18") f.push({ key: `stil:fsk${t.certification_de}`, kind: "stil", label: `FSK ${t.certification_de}` });
   if ((t.nominations?.length ?? 0) >= 5) f.push({ key: "preise:nominiert", kind: "preise", label: "Viel nominierte Filme" });
   if (t.budget_usd) {
     const b = t.budget_usd;
@@ -174,6 +176,18 @@ export type Profile = ReturnType<typeof buildProfile>;
 export type Interest = { key: string; kind: FeatureKind; label: string; lift: number; mine: number; expected: number; share: number; catShare: number };
 const PSEUDO = 3; // Vorsicht bei kleinen Zahlen
 
+// "Kein Interesse" mit Grund: wirkt gezielt auf die passenden Merkmale
+const HARD_GENRES = new Set(["Horror", "Thriller", "Kriegsfilm", "Krimi"]);
+function reasonWeight(reason: string | null | undefined, f: Feature) {
+  switch (reason) {
+    case "genre": return f.kind === "genre" || f.kind === "subgenre" ? -2 : 0;
+    case "hart": return (f.kind === "genre" && HARD_GENRES.has(f.label)) || f.key.startsWith("stil:fsk") ? -1.5 : -0.3;
+    case "leute": return f.kind === "regie" || f.kind === "besetzung" ? -2 : -0.2;
+    case "langweilig": return -0.9;
+    default: return -0.7;
+  }
+}
+
 export function buildInterest(rated: RatedTitle[], catalog: Title[]) {
   const catCount = new Map<string, number>();
   for (const t of catalog) for (const f of new Set(featuresOf(t).map((x) => x.key))) catCount.set(f, (catCount.get(f) ?? 0) + 1);
@@ -190,7 +204,7 @@ export function buildInterest(rated: RatedTitle[], catalog: Title[]) {
       if (seen.has(f.key)) continue;
       seen.add(f.key);
       const a = mine.get(f.key) ?? { f, n: 0 };
-      a.n += w;
+      a.n += w < 0 ? reasonWeight(r.reason, f) : w;
       mine.set(f.key, a);
     }
   }
@@ -232,6 +246,27 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
       acc.set(f.key, a);
     }
   };
+  // Kurze Fragen: "Regie: Nolan hat gefallen" usw. = starke, eindeutige Beobachtung
+  const aspectCounts = new Map<string, { pos: number; neg: number }>();
+  for (const r of rated) {
+    for (const a of r.aspects ?? []) {
+      const sign = a.startsWith("-") ? -1 : 1;
+      const key = a.slice(1);
+      if (key.startsWith("aspekt:")) {
+        const c = aspectCounts.get(key) ?? { pos: 0, neg: 0 };
+        if (sign > 0) c.pos++; else c.neg++;
+        aspectCounts.set(key, c);
+        continue;
+      }
+      const f = featuresOf(r).find((x) => x.key === key);
+      if (f) {
+        const acc0 = acc.get(f.key) ?? { f, sumW: 0, sumWD: 0, n: 0, sumR: 0 };
+        acc0.sumW += 1.5;
+        acc0.sumWD += 1.5 * sign * 2.5;
+        acc.set(f.key, acc0);
+      }
+    }
+  }
   for (const r of rated) {
     // Gelernt wird nur, was von der Erwartung abweicht: Mag jemand Nolan nur, weil Nolan-Filme
     // allgemein gut sind, ist das schon über die Qualität abgedeckt und zählt hier nicht doppelt.
@@ -252,7 +287,7 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     });
   }
   const interest = catalog?.length ? buildInterest(rated, catalog) : null;
-  return { prefs, interest, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
+  return { prefs, interest, aspectCounts, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -300,6 +335,27 @@ export function franchiseOf(t: Title): string | null {
   return t.collection_id ? `reihe:${t.collection_id}` : null;
 }
 
+// "Zu langatmig" → sehr lange Filme etwas nach hinten, "Zu brutal" → FSK 18, "Humor gefällt" → Komödien …
+export const ASPECT_LABELS: Record<string, [string, string]> = {
+  "aspekt:story": ["die Geschichte", "schwache Geschichten"], "aspekt:spannung": ["Spannung", "–"], "aspekt:atmosphaere": ["Atmosphäre", "–"],
+  "aspekt:gefuehl": ["Emotionen", "–"], "aspekt:wendungen": ["Wendungen", "–"], "aspekt:humor": ["Humor", "Humor, der nicht passt"],
+  "aspekt:schauspiel": ["Schauspiel", "–"], "aspekt:langatmig": ["–", "zu langatmig"], "aspekt:vorhersehbar": ["–", "zu vorhersehbar"],
+  "aspekt:brutal": ["–", "zu brutal"], "aspekt:kitsch": ["–", "zu kitschig"], "aspekt:laut": ["–", "zu viel Action / Krach"],
+};
+function aspectAdjust(t: Title, counts: Map<string, { pos: number; neg: number }>) {
+  if (!counts.size) return 0;
+  const c = (k: string) => counts.get(k) ?? { pos: 0, neg: 0 };
+  const g = new Set(t.genres ?? []);
+  let x = 0;
+  if ((t.runtime_seconds ?? 0) > 150 * 60) x -= 0.15 * c("aspekt:langatmig").neg;
+  if (t.certification_de === "18") x -= 0.2 * c("aspekt:brutal").neg;
+  if (g.has("Komödie")) x += 0.1 * (c("aspekt:humor").pos - c("aspekt:humor").neg);
+  if (g.has("Thriller") || g.has("Mystery")) x += 0.1 * (c("aspekt:spannung").pos + c("aspekt:wendungen").pos);
+  if (g.has("Liebesfilm")) x -= 0.15 * c("aspekt:kitsch").neg;
+  if (g.has("Action")) x -= 0.1 * c("aspekt:laut").neg;
+  return Math.max(-0.6, Math.min(0.6, x));
+}
+
 const INTEREST_REASON_KINDS = new Set<FeatureKind>(["genre", "subgenre", "regie", "reihe", "thema", "besetzung", "vorlage", ...AI_KINDS]);
 
 function interestText(it: Interest) {
@@ -336,6 +392,9 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
     }
     const q = qualityOf(t);
     if (q != null) score += qw * (q - profile.qMean);
+
+    // Allgemeine Eindrücke aus den kurzen Fragen (vorsichtig, höchstens ±0,6)
+    score += aspectAdjust(t, profile.aspectCounts);
 
     // Interesse: passt die ART des Films zu dem, was du schaust?
     let topInterest: Interest | null = null;

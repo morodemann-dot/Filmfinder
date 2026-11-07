@@ -19,6 +19,7 @@ import {
 import {
   CANON_FILMS,
   DECADES,
+  discoverYear,
   FESTIVAL_FILMS,
   MOVIE_GENRES,
   discoverBest,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/tmdb";
 import type { CurationCard, CurationFilter, FormState } from "@/app/actions";
 import { wikidataInfo, WIKIDATA_VERSION } from "@/lib/wikidata";
+import { invalidateCatalogCache } from "@/lib/tasteData";
 import { AI_MODELS, costUsd, rateFilm, wikipediaPlots, type AiModelKey, type FilmInput } from "@/lib/aiFeatures";
 
 async function requireAdmin() {
@@ -390,5 +392,42 @@ export async function aiPilotChunk(model: AiModelKey, scope: AiScope = "rated"):
     return { done: ok, remaining: todo.length - ok, errors };
   } catch (e) {
     return { done: 0, remaining: 0, errors: [], fatal: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ---------------- Katalog auffüllen (ein Knopf, sinnvolle Auswahl) ----------------
+// Pro Jahr ab 1990: zwei Drittel die meistgesehenen, ein Drittel die bestbewerteten Filme –
+// so kommen Blockbuster und Kritikerlieblinge gleichermaßen hinein. Alle Katalog-Regeln gelten.
+export async function fillCatalogYear(year: number, perYear: number): Promise<{ added: number; skipped: number; error?: string }> {
+  try {
+    await requireAdmin();
+    const admin = createAdminClient();
+    const want = Math.max(10, Math.min(200, perYear));
+    const popular: number[] = [], acclaimed: number[] = [];
+    for (let p = 1; p <= 6 && popular.length < want * 1.6; p++) {
+      const r = await discoverYear(year, "votes", p);
+      popular.push(...r.ids);
+      if (p >= r.totalPages) break;
+    }
+    for (let p = 1; p <= 3 && acclaimed.length < want * 0.8; p++) {
+      const r = await discoverYear(year, "rating", p);
+      acclaimed.push(...r.ids);
+      if (p >= r.totalPages) break;
+    }
+    // Was schon im Katalog ist oder gesperrt wurde, zählt nicht
+    const all = [...new Set([...popular, ...acclaimed])];
+    const [{ data: have }, { data: blocked }] = await Promise.all([
+      admin.from("titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", all),
+      admin.from("excluded_titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", all),
+    ]);
+    const skip = new Set([...(have ?? []), ...(blocked ?? [])].map((r) => r.tmdb_id as number));
+    const newPopular = popular.filter((id) => !skip.has(id));
+    const newAcclaimed = acclaimed.filter((id) => !skip.has(id) && !newPopular.slice(0, Math.round(want * 0.67)).includes(id));
+    const ids = [...newPopular.slice(0, Math.round(want * 0.67)), ...newAcclaimed.slice(0, want - Math.round(want * 0.67))];
+    const res = await importMovieIds(ids, { gate: true, skipExisting: true, source: "Katalog auffüllen" });
+    if (res.ok) invalidateCatalogCache();
+    return { added: res.ok, skipped: ids.length - res.ok };
+  } catch (e) {
+    return { added: 0, skipped: 0, error: e instanceof Error ? e.message : String(e) };
   }
 }

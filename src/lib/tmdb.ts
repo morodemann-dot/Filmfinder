@@ -419,3 +419,17 @@ export async function recommendations(tmdbId: number) {
   const r = await tmdb<{ results: { id: number }[] }>(`/movie/${tmdbId}/recommendations`, { page: "1" });
   return r.results.map((x) => x.id);
 }
+
+// Für "Katalog auffüllen": Filme eines Jahres – nach Bekanntheit (Anzahl Stimmen) oder Bewertung
+export async function discoverYear(year: number, sort: "votes" | "rating", page: number) {
+  const d = await tmdb<DiscoverResult>("/discover/movie", {
+    sort_by: sort === "votes" ? "vote_count.desc" : "vote_average.desc",
+    primary_release_year: String(year),
+    "vote_count.gte": sort === "votes" ? "600" : "1500",
+    "vote_average.gte": "6.0",
+    "with_runtime.gte": "60",
+    include_adult: "false",
+    page: String(page),
+  });
+  return { ids: d.results.map((r) => r.id), totalPages: d.total_pages };
+}

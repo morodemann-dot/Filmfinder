@@ -13,6 +13,7 @@ import { clearBlocklist, unblockTitle } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
 import TabLink from "@/components/TabLink";
+import FillCatalog from "./FillCatalog";
 
 // Import und KI-Probelauf dürfen bis zu 60 Sekunden pro Etappe dauern.
 export const maxDuration = 60;
@@ -144,8 +145,13 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             <span>Wie gut sind die Filme beschrieben?</span>
             <span className="waiting-cta">Datenlage ›</span>
           </Link>
-          <SettingsPanel settings={settings} />
-          <AddPanel />
+          <FillCatalog current={movies.count ?? 0} />
+          <details className="panel" style={{ marginBottom: 14 }}>
+            <summary className="eyebrow" style={{ cursor: "pointer" }}>Für Fortgeschrittene: gezielt hinzufügen & Regeln ›</summary>
+            <p className="caption">Einzelne Regisseure, Schauspieler, Filmreihen, Listen oder Stichworte hinzufügen und die Katalog-Regeln anpassen. Für den normalen Betrieb nicht nötig.</p>
+            <SettingsPanel settings={settings} />
+            <AddPanel />
+          </details>
         </>
       )}
     </>

@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Poster from "./Poster";
 import Score from "./Score";
-import { saveFeedbackQuiet as setFeedback } from "@/app/actions";
+import { saveAspects, saveFeedbackQuiet as setFeedback, snoozeTitle } from "@/app/actions";
+import { AspectSheet, ReasonSheet } from "./QuestionSheet";
+import { shouldAskAspects, type AspectInfo, type ReasonKey } from "@/lib/aspects";
 
 // Der große Vorschlag auf der Filmfinder-Seite als Kartenstapel.
-// Links wischen / "Heute nicht" = nächster Vorschlag (nur für jetzt, ändert dein Profil nicht)
-// "Kein Interesse"              = wird gespeichert, die App lernt daraus
+// Links wischen / "Heute nicht" = 7 Tage ausblenden (ändert dein Profil nicht)
+// "Kein Interesse"              = wird gespeichert, kurze Frage nach dem Grund (überspringbar)
 // Rechts wischen / "Merken"     = auf die Merkliste
 // "Schon gesehen"               = optional gleich 1–10 bewerten
 
@@ -18,7 +20,10 @@ export type Pick = {
   poster_path: string | null;
   meta: string;
   reasons: string[];
+  info?: AspectInfo; // für konkrete Antwortmöglichkeiten bei den kurzen Fragen
 };
+
+type Question = { kind: "reason"; pick: Pick } | { kind: "aspect"; pick: Pick; mode: "pos" | "neg" } | null;
 
 type Action = "skip" | "nein" | "merken" | "gesehen";
 const THRESHOLD = 90;
@@ -38,6 +43,9 @@ export default function PickDeck({ picks: incoming, deckKey }: { picks: Pick[]; 
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const start = useRef<{ x: number; y: number; t: number; moved: boolean } | null>(null);
+  const [question, setQuestion] = useState<Question>(null);
+  const saving = useRef(new Map<number, Promise<unknown>>()); // damit Antworten erst nach dem Eintrag gespeichert werden
+  const fail = (p: Pick) => () => setError(`„${p.title}“ konnte nicht gespeichert werden.`);
 
   // Neue Filterauswahl = neuer Stapel; sonst die einmal geladene Reihenfolge behalten
   const [picks, setPicks] = useState(incoming);
@@ -64,11 +72,38 @@ export default function PickDeck({ picks: incoming, deckKey }: { picks: Pick[]; 
     setRating(false);
     setEntering(null);
     setHistory((h) => [...h.slice(-19), { pick: p, action }]);
-    if (action !== "skip") {
-      setFeedback(p.id, STATUS[action], action === "gesehen" ? score : null).catch(() =>
-        setError(`„${p.title}“ konnte nicht gespeichert werden.`),
-      );
+    if (action === "skip") {
+      snoozeTitle(p.id, 7).catch(() => {});
+    } else {
+      saving.current.set(p.id, setFeedback(p.id, STATUS[action], action === "gesehen" ? score : null).catch(fail(p)));
     }
+    if (action === "nein") setQuestion({ kind: "reason", pick: p });
+    else if (action === "gesehen") {
+      const mode = shouldAskAspects(score);
+      setQuestion(mode ? { kind: "aspect", pick: p, mode } : null);
+    } else setQuestion(null);
+  }
+
+  function answerReason(r: ReasonKey | null) {
+    const q = question;
+    setQuestion(null);
+    if (!q || !r) return;
+    const p = q.pick;
+    const after = saving.current.get(p.id) ?? Promise.resolve();
+    if (r === "spaeter") {
+      // "Vielleicht später" = kein dauerhaftes Nein, sondern 30 Tage Pause
+      after.then(() => setFeedback(p.id, null, null)).then(() => snoozeTitle(p.id, 30)).catch(fail(p));
+    } else {
+      after.then(() => setFeedback(p.id, "nicht_interessiert", null, r)).catch(fail(p));
+    }
+  }
+
+  function answerAspects(list: string[]) {
+    const q = question;
+    setQuestion(null);
+    if (!q || !list.length) return;
+    const p = q.pick;
+    (saving.current.get(p.id) ?? Promise.resolve()).then(() => saveAspects(p.id, list)).catch(fail(p));
   }
 
   function undo() {
@@ -78,7 +113,9 @@ export default function PickDeck({ picks: incoming, deckKey }: { picks: Pick[]; 
     setIndex((i) => Math.max(0, i - 1));
     setEntering(last.pick.id);
     setRating(false);
-    if (last.action !== "skip") setFeedback(last.pick.id, null, null).catch(() => {});
+    setQuestion(null);
+    if (last.action === "skip") snoozeTitle(last.pick.id, 0).catch(() => {});
+    else setFeedback(last.pick.id, null, null).then(() => snoozeTitle(last.pick.id, 0)).catch(() => {});
   }
 
   // Wischen
@@ -225,6 +262,10 @@ export default function PickDeck({ picks: incoming, deckKey }: { picks: Pick[]; 
         <button className="linkish" onClick={undo} disabled={history.length === 0}>↺ Rückgängig</button>
       </div>
       {error && <p className="error" style={{ textAlign: "center" }}>{error}</p>}
+      {question?.kind === "reason" && <ReasonSheet title={question.pick.title} onDone={answerReason} />}
+      {question?.kind === "aspect" && (
+        <AspectSheet title={question.pick.title} info={question.pick.info ?? {}} mode={question.mode} onDone={answerAspects} />
+      )}
     </div>
   );
 }

@@ -82,11 +82,46 @@ export async function setFeedback(titleId: number, status: Status | null, rating
 
 // Wie setFeedback, aber OHNE dass die aktuelle Seite danach neu berechnet wird.
 // Für Kartenstapel (Filmfinder, Bewerten): Sonst springt der Stapel zurück und es ruckelt.
-export async function saveFeedbackQuiet(titleId: number, status: Status | null, rating: number | null) {
-  await writeFeedback(titleId, status, rating);
+export async function saveFeedbackQuiet(titleId: number, status: Status | null, rating: number | null, reason?: string | null) {
+  await writeFeedback(titleId, status, rating, reason);
 }
 
-async function writeFeedback(titleId: number, status: Status | null, rating: number | null) {
+// Antwort auf "Was hat gefallen / gestört?" speichern (zum bestehenden Eintrag)
+export async function saveAspects(titleId: number, aspects: string[]) {
+  const user = await getUser();
+  if (!user) throw new Error("Nicht angemeldet");
+  const supabase = await createClient();
+  const clean = aspects.filter((a) => /^[+-][a-z_]+:.{1,120}$/.test(a)).slice(0, 5);
+  const { error } = await supabase.from("user_title_feedback").update({ aspects: clean }).eq("user_id", user.id).eq("title_id", titleId);
+  if (error) throw new Error("Speichern fehlgeschlagen (wurde die Ergänzung 15 ausgeführt?)");
+}
+
+// "Heute nicht" (7 Tage) / "Vielleicht später" (30 Tage) – days = 0 hebt die Pause auf
+export async function snoozeTitle(titleId: number, days: number) {
+  const user = await getUser();
+  if (!user) throw new Error("Nicht angemeldet");
+  const supabase = await createClient();
+  if (days <= 0) {
+    await supabase.from("snoozed").delete().eq("user_id", user.id).eq("title_id", titleId);
+    return;
+  }
+  const until = new Date(Date.now() + days * 86_400_000).toISOString();
+  await supabase.from("snoozed").upsert({ user_id: user.id, title_id: titleId, until });
+}
+
+// Profil für Freunde-Funktionen
+export async function saveProfile(displayName: string, shareTogether: boolean) {
+  const user = await getUser();
+  if (!user) throw new Error("Nicht angemeldet");
+  const supabase = await createClient();
+  const { error } = await supabase.from("profiles").upsert({
+    user_id: user.id, display_name: displayName.trim().slice(0, 40) || null, share_together: shareTogether, updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error("Speichern fehlgeschlagen (wurde die Ergänzung 15 ausgeführt?)");
+  revalidatePath("/", "layout");
+}
+
+async function writeFeedback(titleId: number, status: Status | null, rating: number | null, reason?: string | null) {
   const user = await getUser();
   if (!user) throw new Error("Nicht angemeldet");
   const supabase = await createClient();
@@ -101,6 +136,7 @@ async function writeFeedback(titleId: number, status: Status | null, rating: num
       title_id: titleId,
       status,
       rating: r,
+      reason: status === "nicht_interessiert" ? (reason ?? null) : null,
       updated_at: new Date().toISOString(),
     });
     if (error) throw new Error("Speichern fehlgeschlagen");

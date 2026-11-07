@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Poster from "@/components/Poster";
 import Score, { SCORE_LABEL, scoreColor } from "@/components/Score";
-import { saveFeedbackQuiet as setFeedback } from "@/app/actions";
+import { saveAspects, saveFeedbackQuiet as setFeedback, snoozeTitle } from "@/app/actions";
+import { AspectSheet, ReasonSheet } from "@/components/QuestionSheet";
+import { shouldAskAspects, type ReasonKey } from "@/lib/aspects";
+import { useDetailMode } from "@/lib/useDetailMode";
 import type { Status } from "@/lib/types";
 import { pullRelated, type RateCandidate } from "@/lib/likelySeen";
 import { MIN_RATINGS } from "@/lib/onboarding";
@@ -36,6 +39,11 @@ export default function QuickRate({
   const [, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [detail, setDetail] = useDetailMode();
+  const [question, setQuestion] = useState<
+    { kind: "reason"; t: RateCandidate } | { kind: "aspect"; t: RateCandidate; mode: "pos" | "neg" } | null
+  >(null);
+  const saving = useRef(new Map<number, Promise<unknown>>());
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -76,18 +84,36 @@ export default function QuickRate({
       }
     }
     setFlash(a);
-    start(async () => {
-      try {
-        await setFeedback(t.id, status, rating);
-      } catch {
-        setError(`„${t.title}“ konnte nicht gespeichert werden.`);
-      }
-    });
+    const p = setFeedback(t.id, status, rating).catch(() => setError(`„${t.title}“ konnte nicht gespeichert werden.`));
+    saving.current.set(t.id, p);
+    start(async () => { await p; });
+    // Kurze Fragen: bei klaren Urteilen ab und zu, im ausführlichen Modus immer
+    if (status === "gesehen") {
+      const mode = shouldAskAspects(rating);
+      setQuestion(mode ? { kind: "aspect", t, mode } : null);
+    } else if (status === "nicht_interessiert" && detail) {
+      setQuestion({ kind: "reason", t });
+    } else setQuestion(null);
     // Kurz zeigen, was gewählt wurde – dann weiter
     timer.current = setTimeout(() => {
       setFlash(null);
       setIndex((i) => i + 1);
     }, 650);
+  }
+
+  function answerReason(r: ReasonKey | null) {
+    const q = question;
+    setQuestion(null);
+    if (!q || !r) return;
+    const after = saving.current.get(q.t.id) ?? Promise.resolve();
+    if (r === "spaeter") after.then(() => setFeedback(q.t.id, null, null)).then(() => snoozeTitle(q.t.id, 30)).catch(() => {});
+    else after.then(() => setFeedback(q.t.id, "nicht_interessiert", null, r)).catch(() => {});
+  }
+  function answerAspects(list: string[]) {
+    const q = question;
+    setQuestion(null);
+    if (!q || !list.length) return;
+    (saving.current.get(q.t.id) ?? Promise.resolve()).then(() => saveAspects(q.t.id, list)).catch(() => {});
   }
 
   function back() {
@@ -161,7 +187,16 @@ export default function QuickRate({
         <button className={`btn ${shown?.status === "merkliste" ? "active" : ""}`} onClick={() => answer("merkliste")}>Merkliste</button>
         <button className={`btn ${shown?.status === "nicht_interessiert" ? "active" : ""}`} onClick={() => answer("nicht_interessiert")}>Kein Interesse</button>
       </div>
+      <label className="detail-toggle">
+        <input type="checkbox" checked={detail} onChange={(e) => setDetail(e.target.checked)} />
+        <span>
+          <strong>Ausführlich bewerten</strong>
+          <span className="caption"> – nach jeder Bewertung eine kurze Frage (was hat gefallen / gestört?). So lernt die App schneller.</span>
+        </span>
+      </label>
       {error && <p className="error">{error}</p>}
+      {question?.kind === "reason" && <ReasonSheet title={question.t.title} onDone={answerReason} />}
+      {question?.kind === "aspect" && <AspectSheet title={question.t.title} info={question.t} mode={question.mode} onDone={answerAspects} />}
     </div>
   );
 }

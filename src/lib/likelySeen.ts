@@ -19,6 +19,10 @@ export type RateCandidate = {
   collection_id: number | null;
   collection_name: string | null;
   popularity: number | null;
+  wd_genres?: string[] | null;
+  composers?: string[] | null;
+  cinematographers?: string[] | null;
+  based_on?: string[] | null;
 };
 
 export type SeenTitle = Pick<RateCandidate, "directors" | "cast_names" | "collection_id">;

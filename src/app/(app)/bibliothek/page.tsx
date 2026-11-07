@@ -2,6 +2,7 @@ import Link from "next/link";
 import TitleCard from "@/components/TitleCard";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { STATUS_LABEL, formatScore, type Status, type Title } from "@/lib/types";
+import ProfilePanel from "@/components/ProfilePanel";
 
 // Persönliche Bibliothek: alles, was du schon eingeordnet hast.
 
@@ -25,6 +26,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   const counts = Object.fromEntries(TABS.map((s) => [s, rows.filter((r) => r.status === s).length]));
   const shown = rows.filter((r) => r.status === tab && r.titles);
 
+  const { data: profile, error: profileError } = await supabase.from("profiles").select("display_name,share_together").eq("user_id", user!.id).maybeSingle();
   return (
     <>
       <div className="topbar" style={{ marginBottom: 6 }}>
@@ -47,6 +49,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       ) : (
         <div className="empty">Hier ist noch nichts. Leg los unter „Bewerten“.</div>
       )}
+      <ProfilePanel name={profile?.display_name ?? ""} share={!!profile?.share_together} ready={!profileError} />
     </>
   );
 }

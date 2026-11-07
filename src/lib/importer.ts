@@ -31,6 +31,7 @@ export type ImportOpts = {
   stage?: boolean; // erst in die Vorschau statt direkt in den Katalog
   source?: string; // Woher? (wird bei Kandidaten angezeigt)
   gate?: boolean; // Qualitätsschwelle prüfen (Standard: ja)
+  skipExisting?: boolean; // Filme, die schon im Katalog sind, nicht erneut laden
 };
 
 export type ImportResult = {
@@ -77,6 +78,11 @@ export async function importMovieIds(ids: number[], opts: ImportOpts = {}): Prom
   ids = ids.filter((x) => !blockedSet.has(x));
 
   // 2) Bei Vorschau: was schon im Katalog oder schon als Kandidat wartet, überspringen
+  if (opts.skipExisting && !opts.stage && ids.length) {
+    const { data: inCatalog } = await admin.from("titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", ids);
+    const skip = new Set((inCatalog ?? []).map((r) => r.tmdb_id as number));
+    ids = ids.filter((x) => !skip.has(x));
+  }
   if (opts.stage && ids.length) {
     const [{ data: inCatalog }, { data: waiting }] = await Promise.all([
       admin.from("titles").select("tmdb_id").eq("media_type", "movie").in("tmdb_id", ids),

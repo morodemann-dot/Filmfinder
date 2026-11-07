@@ -161,6 +161,9 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
           titleId={title.id}
           initialStatus={(fb?.status as Status) ?? null}
           initialRating={fb?.rating ?? null}
+          title={title.title}
+          info={{ directors: title.directors, cast_names: title.cast_names?.slice(0, 3), genres: title.genres, wd_genres: title.wd_genres,
+            composers: title.composers?.slice(0, 1), cinematographers: title.cinematographers?.slice(0, 1), based_on: title.based_on }}
         />
 
         {title.collection_name && (
