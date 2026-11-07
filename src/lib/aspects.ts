@@ -99,19 +99,20 @@ function positives(t: AspectInfo, strong: boolean): { concrete: AspectOption[]; 
   for (const k of known.slice(0, 3)) o.push({ key: `+thema:${k}`, label: cap(KW_DE[k.toLowerCase()]) });
   for (const s of subjects) o.push({ key: `+thema:${s}`, label: `Thema: ${s}` });
   if (d) o.push({ key: `+regie:${d}`, label: `Regie von ${d}` });
-  for (const a of (t.cast_names ?? []).slice(0, 3)) o.push({ key: `+besetzung:${a}`, label: a });
+  for (const a of (t.cast_names ?? []).slice(0, 2)) o.push({ key: `+besetzung:${a}`, label: a });
+  if (t.composers?.[0]) o.push({ key: `+musik:${t.composers[0]}`, label: `Filmmusik von ${t.composers[0]}` });
   if (t.writers?.[0] && t.writers[0] !== d) o.push({ key: `+drehbuch:${t.writers[0]}`, label: `Drehbuch (${t.writers[0]})` });
   if (sub) o.push({ key: `+subgenre:${sub}`, label: sub });
   if (t.set_in_period?.[0]) o.push({ key: `+thema:zeit:${t.set_in_period[0]}`, label: `Spielt: ${t.set_in_period[0]}` });
   if (t.narrative_locations?.[0]) o.push({ key: `+thema:ort:${t.narrative_locations[0]}`, label: `Schauplatz: ${t.narrative_locations[0]}` });
   if (kind) o.push({ key: `+vorlage:${kind.split(":")[0]}`, label: `Die Vorlage (${kind.split(":").slice(1).join(":").trim() || kind})` });
-  if (t.composers?.[0]) o.push({ key: `+musik:${t.composers[0]}`, label: `Musik von ${t.composers[0]}` });
   if (t.cinematographers?.[0]) o.push({ key: `+kamera:${t.cinematographers[0]}`, label: "Die Bilder / Kamera" });
   // 2) Allgemeine Eindrücke
   g.push({ key: "+aspekt:story", label: "Die Geschichte" });
   g.push({ key: "+aspekt:spannung", label: "Spannung" });
   g.push({ key: "+aspekt:figuren", label: "Die Figuren" });
   g.push({ key: "+aspekt:atmosphaere", label: "Atmosphäre" });
+  if (!t.composers?.[0]) g.push({ key: "+aspekt:musik", label: "Filmmusik" });
   if (strong) {
     g.push({ key: "+aspekt:gefuehl", label: "Hat mich berührt" });
     g.push({ key: "+aspekt:tiefgang", label: "Regt zum Nachdenken an" });
@@ -155,6 +156,8 @@ function negatives(t: AspectInfo, mild: boolean): AspectOption[] {
   const genre = t.genres?.[0];
   if (genre && !mild) o.push({ key: `-genre:${genre}`, label: `${genre} ist nicht mein Genre` });
   if (d) o.push({ key: `-regie:${d}`, label: `Regie von ${d} nicht meins` });
+  if (t.composers?.[0]) o.push({ key: `-musik:${t.composers[0]}`, label: `Filmmusik (${t.composers[0]}) passte nicht` });
+  else o.push({ key: "-aspekt:musik", label: "Filmmusik passte nicht" });
   for (const a of (t.cast_names ?? []).slice(0, 2)) o.push({ key: `-besetzung:${a}`, label: `${a} überzeugt mich nicht` });
   if (t.collection_name) o.push({ key: "-aspekt:fortsetzung", label: `Reihe „${t.collection_name}“ ist ausgereizt` });
   return o;
@@ -165,14 +168,14 @@ export function aspectGroups(t: AspectInfo, rating: number): AspectGroup[] {
   if (rating >= 8) {
     const p = positives(t, true);
     return [
-      { label: "Am Film selbst", options: p.concrete.slice(0, 9) },
+      { label: "Am Film selbst", options: p.concrete.slice(0, 10) },
       { label: "Allgemein", options: p.general },
     ].filter((g) => g.options.length);
   }
   if (rating >= 7) {
     const p = positives(t, false);
     return [
-      { label: "Was hat gepasst?", options: [...p.concrete.slice(0, 6), ...p.general.slice(0, 3)] },
+      { label: "Was hat gepasst?", options: [...p.concrete.slice(0, 7), ...p.general.slice(0, 3)] },
       { label: "Was fehlte zur 8?", options: negatives(t, true).slice(0, 8) },
     ];
   }

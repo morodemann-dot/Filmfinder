@@ -347,7 +347,7 @@ export const ASPECT_LABELS: Record<string, [string, string]> = {
   "aspekt:schauspiel": ["Schauspiel", "–"], "aspekt:langatmig": ["–", "zu langatmig"], "aspekt:vorhersehbar": ["–", "zu vorhersehbar"],
   "aspekt:brutal": ["–", "zu brutal"], "aspekt:kitsch": ["–", "zu kitschig"], "aspekt:laut": ["–", "zu viel Action / Krach"],
   "aspekt:figuren": ["starke Figuren", "blasse Figuren"], "aspekt:tiefgang": ["Tiefgang", "fehlender Tiefgang"],
-  "aspekt:ende": ["ein gutes Ende", "schwaches Ende"], "aspekt:dialoge": ["Dialoge", "–"], "aspekt:fortsetzung": ["–", "ausgereizte Reihen"],
+  "aspekt:ende": ["ein gutes Ende", "schwaches Ende"], "aspekt:musik": ["Filmmusik", "unpassende Filmmusik"], "aspekt:dialoge": ["Dialoge", "–"], "aspekt:fortsetzung": ["–", "ausgereizte Reihen"],
 };
 function aspectAdjust(t: Title, counts: Map<string, { pos: number; neg: number }>) {
   if (!counts.size) return 0;

@@ -87,23 +87,35 @@ export default function QuickRate({
     const p = setFeedback(t.id, status, rating).catch(() => setError(`„${t.title}“ konnte nicht gespeichert werden.`));
     saving.current.set(t.id, p);
     start(async () => { await p; });
-    // Kurze Fragen: bei klaren Urteilen ab und zu, im ausführlichen Modus immer
+    // Kurze Fragen: bei klaren Urteilen ab und zu, im ausführlichen Modus immer.
+    // Während gefragt wird, bleibt der Film stehen – weiter geht es erst nach der Antwort.
+    let asking = false;
     if (status === "gesehen") {
       const r = shouldAskAspects(rating);
       setQuestion(r != null ? { kind: "aspect", t, rating: r } : null);
+      asking = r != null;
     } else if (status === "nicht_interessiert" && detail) {
       setQuestion({ kind: "reason", t });
+      asking = true;
     } else setQuestion(null);
     // Kurz zeigen, was gewählt wurde – dann weiter
     timer.current = setTimeout(() => {
       setFlash(null);
-      setIndex((i) => i + 1);
+      if (!asking) setIndex((i) => i + 1);
     }, 650);
+  }
+
+  // Nach der Antwort (oder "Überspringen") zum nächsten Film
+  function next() {
+    if (timer.current) clearTimeout(timer.current);
+    setFlash(null);
+    setIndex((i) => i + 1);
   }
 
   function answerReason(r: ReasonKey | null) {
     const q = question;
     setQuestion(null);
+    next();
     if (!q || !r) return;
     const after = saving.current.get(q.t.id) ?? Promise.resolve();
     if (r === "spaeter") after.then(() => setFeedback(q.t.id, null, null)).then(() => snoozeTitle(q.t.id, 30)).catch(() => {});
@@ -112,6 +124,7 @@ export default function QuickRate({
   function answerAspects(list: string[]) {
     const q = question;
     setQuestion(null);
+    next();
     if (!q || !list.length) return;
     (saving.current.get(q.t.id) ?? Promise.resolve()).then(() => saveAspects(q.t.id, list)).catch(() => {});
   }
@@ -119,6 +132,7 @@ export default function QuickRate({
   function back() {
     if (timer.current) clearTimeout(timer.current);
     setFlash(null);
+    if (question) { setQuestion(null); return; } // Frage offen: nur schließen, Film bleibt
     setIndex((i) => Math.max(0, i - 1));
   }
 
