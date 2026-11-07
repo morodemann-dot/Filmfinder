@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Poster from "./Poster";
 import Score from "./Score";
-import { setFeedback } from "@/app/actions";
+import { saveFeedbackQuiet as setFeedback } from "@/app/actions";
 
 // Der große Vorschlag auf der Filmfinder-Seite als Kartenstapel.
 // Links wischen / "Heute nicht" = nächster Vorschlag (nur für jetzt, ändert dein Profil nicht)
@@ -25,7 +25,9 @@ const THRESHOLD = 90;
 const STAMP: Record<Action, string> = { skip: "HEUTE NICHT", nein: "KEIN INTERESSE", merken: "MERKEN", gesehen: "GESEHEN" };
 const STATUS = { nein: "nicht_interessiert", merken: "merkliste", gesehen: "gesehen" } as const;
 
-export default function PickDeck({ picks }: { picks: Pick[] }) {
+// deckKey: ändert sich nur, wenn du andere Filter wählst – dann gibt es einen neuen Stapel.
+// Sonst bleibt der Stapel stabil, auch wenn die Seite im Hintergrund neu geladen wird.
+export default function PickDeck({ picks: incoming, deckKey }: { picks: Pick[]; deckKey: string }) {
   const router = useRouter();
   const [index, setIndex] = useState(0);
   const [history, setHistory] = useState<{ pick: Pick; action: Action }[]>([]);
@@ -37,11 +39,12 @@ export default function PickDeck({ picks }: { picks: Pick[] }) {
   const [error, setError] = useState<string | null>(null);
   const start = useRef<{ x: number; y: number; t: number; moved: boolean } | null>(null);
 
-  // Neue Filterauswahl = neuer Stapel
-  const key = picks.map((p) => p.id).join(",");
-  const [lastKey, setLastKey] = useState(key);
-  if (key !== lastKey) {
-    setLastKey(key);
+  // Neue Filterauswahl = neuer Stapel; sonst die einmal geladene Reihenfolge behalten
+  const [picks, setPicks] = useState(incoming);
+  const [lastKey, setLastKey] = useState(deckKey);
+  if (deckKey !== lastKey) {
+    setLastKey(deckKey);
+    setPicks(incoming);
     setIndex(0);
     setHistory([]);
     setRating(false);

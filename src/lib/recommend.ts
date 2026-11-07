@@ -93,7 +93,7 @@ export const APP_SETTINGS = { interestWeight: 1, qualityWeight: 0.5 } as const; 
 
 type Feature = { key: string; kind: FeatureKind; label: string };
 
-function featuresOf(t: Title): Feature[] {
+export function featuresOf(t: Title): Feature[] {
   const f: Feature[] = [];
   for (const g of t.genres ?? []) f.push({ key: `genre:${g}`, kind: "genre", label: g });
   for (const d of t.directors ?? []) f.push({ key: `regie:${d}`, kind: "regie", label: d });

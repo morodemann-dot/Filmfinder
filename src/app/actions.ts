@@ -75,6 +75,18 @@ export async function logout() {
 // ---------------- Bewerten & Bibliothek ----------------
 
 export async function setFeedback(titleId: number, status: Status | null, rating: number | null) {
+  await writeFeedback(titleId, status, rating);
+  revalidatePath("/bibliothek");
+  revalidatePath(`/titel/${titleId}`);
+}
+
+// Wie setFeedback, aber OHNE dass die aktuelle Seite danach neu berechnet wird.
+// Für Kartenstapel (Filmfinder, Bewerten): Sonst springt der Stapel zurück und es ruckelt.
+export async function saveFeedbackQuiet(titleId: number, status: Status | null, rating: number | null) {
+  await writeFeedback(titleId, status, rating);
+}
+
+async function writeFeedback(titleId: number, status: Status | null, rating: number | null) {
   const user = await getUser();
   if (!user) throw new Error("Nicht angemeldet");
   const supabase = await createClient();
@@ -93,8 +105,6 @@ export async function setFeedback(titleId: number, status: Status | null, rating
     });
     if (error) throw new Error("Speichern fehlgeschlagen");
   }
-  revalidatePath("/bibliothek");
-  revalidatePath(`/titel/${titleId}`);
 }
 
 // ---------------- Katalog füllen ----------------

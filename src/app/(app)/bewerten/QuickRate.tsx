@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Poster from "@/components/Poster";
 import Score, { SCORE_LABEL, scoreColor } from "@/components/Score";
-import { setFeedback } from "@/app/actions";
+import { saveFeedbackQuiet as setFeedback } from "@/app/actions";
 import type { Status } from "@/lib/types";
 import { pullRelated, type RateCandidate } from "@/lib/likelySeen";
 import { MIN_RATINGS } from "@/lib/onboarding";

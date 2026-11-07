@@ -2,46 +2,59 @@ import Link from "next/link";
 import Poster from "@/components/Poster";
 import { MIN_RATINGS } from "@/lib/onboarding";
 import PickDeck, { type Pick } from "@/components/PickDeck";
+import FinderFilters, { type FinderFilter } from "@/components/FinderFilters";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { loadTasteData } from "@/lib/tasteData";
 import { tuneOptions } from "@/lib/evaluate";
-import { APP_SETTINGS, buildProfile, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences, type Recommendation } from "@/lib/recommend";
-import { MOODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
-import { formatRuntime } from "@/lib/types";
+import {
+  APP_SETTINGS, buildProfile, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences,
+  type RatedTitle, type Recommendation,
+} from "@/lib/recommend";
+import { MODES, MOODS, PERIODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
+import { dayNumber, moreLike } from "@/lib/similar";
+import { formatRuntime, type Title } from "@/lib/types";
 
-// Startseite "Filmfinder": erst die Stimmung wählen, dann gibt's einen klaren Tipp + ein paar Alternativen.
+// Startseite "Filmfinder": Filter oben (Auswahlmenüs), darunter der Kartenstapel mit den besten Vorschlägen
+// und persönliche Reihen ("Weil du X mochtest", Geheimtipps, Merkliste).
 
-type SP = { stimmung?: string; zeit?: string; modus?: string };
+type SP = { stimmung?: string; zeit?: string; modus?: string; genre?: string; zeitraum?: string };
 
-function href(sp: SP, change: Partial<SP>) {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries({ ...sp, ...change })) if (v) p.set(k, v);
-  const s = p.toString();
-  return s ? `/?${s}` : "/";
-}
-
-function Tile({ r }: { r: Recommendation }) {
-  const t = r.title;
+function Tile({ t, caption }: { t: Title; caption?: string }) {
   return (
     <Link href={`/titel/${t.id}`} className="card">
       <Poster path={t.poster_path} title={t.title} size="w185" />
       <div className="card-title">{t.title}</div>
-      <div className="card-meta">{r.reasons[0]?.replace(/ \(.*\)$/, "") ?? t.release_year}</div>
+      <div className="card-meta">{caption ?? t.release_year}</div>
     </Link>
   );
 }
+
+function Row({ title, sub, items }: { title: string; sub?: string; items: { t: Title; caption?: string }[] }) {
+  if (items.length < 3) return null;
+  return (
+    <section>
+      <div className="row-head">
+        <h2>{title}</h2>
+        {sub && <span className="caption">{sub}</span>}
+      </div>
+      <div className="row-scroll">{items.map(({ t, caption }) => <Tile key={t.id} t={t} caption={caption} />)}</div>
+    </section>
+  );
+}
+
+const shortReason = (r?: Recommendation) => r?.reasons[0]?.replace(/ \(.*\)$/, "").replace(/^Typisch für dich – /, "");
 
 export default async function FilmfinderPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const mood = MOODS.find((m) => m.key === sp.stimmung) ?? null;
   const time = (sp.zeit && sp.zeit in TIMES ? sp.zeit : "egal") as TimeKey;
-  const surprise = sp.modus === "ueberrasch";
+  const period = PERIODS[sp.zeitraum ?? ""] ?? PERIODS.alle;
+  const mode = sp.modus && sp.modus in MODES ? sp.modus : "sicher";
 
   const supabase = await createClient();
   const user = await getUser();
   const { rated, catalog } = await loadTasteData(supabase, user!.id);
   const seen = new Set(rated.map((r) => r.id));
-  // Persönliche Mischung aus Qualität und Geschmack – per Messtest an deinen Bewertungen gewählt
   const tuned = tuneOptions(rated).opts;
   // Interesse (welche ART von Filmen du schaust) + halbe allgemeine Qualität – im Modell-Duell am treffsichersten
   const opts = { ...tuned, ...APP_SETTINGS };
@@ -66,16 +79,37 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
     );
   }
 
-  // Kandidaten: ungesehen + passend zu Stimmung und Zeit
-  const pops = catalog.map((t) => t.popularity ?? 0).sort((a, b) => a - b);
-  const medianPop = pops[Math.floor(pops.length / 2)] ?? 0;
-  const candidates = catalog.filter(
-    (t) => !seen.has(t.id) && (t.release_year ?? 0) >= SUGGEST_FROM_YEAR && (!mood || matchesMood(t, mood)) && matchesTime(t, time) &&
-      (!surprise || (t.popularity ?? 0) < medianPop),
+  // Auswahlmöglichkeiten der Filter
+  const recent = catalog.filter((t) => (t.release_year ?? 0) >= SUGGEST_FROM_YEAR);
+  const genreCount = new Map<string, number>();
+  for (const t of recent) for (const g of t.genres ?? []) genreCount.set(g, (genreCount.get(g) ?? 0) + 1);
+  const filters: FinderFilter[] = [
+    { key: "stimmung", label: "Stimmung", all: "Jede Stimmung", options: MOODS.map((m) => ({ value: m.key, label: m.label, group: m.group ?? "Stimmungen" })) },
+    { key: "genre", label: "Genre", all: "Alle Genres", options: [...genreCount.entries()].filter(([, n]) => n >= 5).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([g]) => ({ value: g, label: g })) },
+    { key: "zeit", label: "Länge", all: "Jede Länge", options: (Object.keys(TIMES) as TimeKey[]).filter((k) => k !== "egal").map((k) => ({ value: k, label: TIMES[k].label })) },
+    { key: "zeitraum", label: "Zeitraum", all: "Seit 1990", options: Object.entries(PERIODS).filter(([k]) => k !== "alle").map(([k, p]) => ({ value: k, label: p.label })) },
+    { key: "modus", label: "Sichere Wahl", all: "Sichere Wahl", options: Object.entries(MODES).filter(([k]) => k !== "sicher").map(([k, label]) => ({ value: k, label })) },
+  ];
+
+  // Kandidaten: ungesehen, ab 1990 und passend zu allen Filtern
+  const pops = recent.map((t) => t.popularity ?? 0).sort((a, b) => a - b);
+  const p40 = pops[Math.floor(pops.length * 0.4)] ?? 0;
+  const p60 = pops[Math.floor(pops.length * 0.6)] ?? 0;
+  const byMode = (t: Title) =>
+    mode === "geheimtipp" ? (t.popularity ?? 0) < p40 && (t.vote_count ?? 0) >= 300
+      : mode === "bekannt" ? (t.popularity ?? 0) >= p60
+        : mode === "preise" ? (t.oscars?.length ?? 0) + (t.globes?.length ?? 0) + (t.festivals?.length ?? 0) > 0
+          : true;
+  const candidates = recent.filter(
+    (t) => !seen.has(t.id) && (t.release_year ?? 0) >= period.from && (t.release_year ?? 0) <= period.to &&
+      (!mood || matchesMood(t, mood)) && (!sp.genre || (t.genres ?? []).includes(sp.genre)) && matchesTime(t, time) && byMode(t),
   );
-  const recs = recommend(candidates, profile, opts).filter((r) => r.score > 0 && r.reasons.length > 0);
-  const DECK = 25; // so viele Vorschläge liegen im Stapel
-  // Abwechslung: weitere Filme derselben Reihe/Regie bekommen einen kleinen Abzug
+  const recs = recommend(candidates, profile, opts).filter((r) => r.reasons.length > 0);
+  const recById = new Map(recs.map((r) => [r.title.id, r]));
+  const boost = new Map(recs.map((r) => [r.title.id, r.score]));
+
+  // 1) Der Stapel: die besten Vorschläge, abwechslungsreich
+  const DECK = 25;
   const diverse = pickDiverse(recs, DECK + 12);
   const picks: Pick[] = diverse.slice(0, DECK).map((r) => ({
     id: r.title.id,
@@ -84,78 +118,81 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
     meta: [r.title.release_year, formatRuntime(r.title.runtime_seconds), r.title.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · "),
     reasons: r.reasons,
   }));
+  const inDeck = new Set(picks.map((p) => p.id));
+  const notInDeck = (t: Title) => !inDeck.has(t.id);
+
+  // 2) "Weil du X mochtest" – zwei Lieblingsfilme, die täglich wechseln
+  const favorites = rated
+    .filter((r): r is RatedTitle => r.status === "gesehen" && (r.rating ?? 0) >= 8 && (r.release_year ?? 0) >= SUGGEST_FROM_YEAR)
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || a.id - b.id);
+  const day = dayNumber();
+  const anchors = favorites.length
+    ? [...new Set([favorites[(day * 7) % favorites.length], favorites[(day * 7 + Math.floor(favorites.length / 2)) % favorites.length]])]
+    : [];
+  const becauseRows = anchors.map((a) => ({
+    anchor: a,
+    items: moreLike(a, candidates.filter(notInDeck), boost, 12).map((t) => ({ t, caption: shortReason(recById.get(t.id)) ?? String(t.release_year ?? "") })),
+  }));
+
+  // 3) Geheimtipps (wenig bekannt, passt aber zu dir)
+  const gems = mode === "geheimtipp" ? [] : pickDiverse(recs.filter((r) => (r.title.popularity ?? 0) < p40 && (r.title.vote_count ?? 0) >= 300 && notInDeck(r.title)), 12);
+
+  // 4) Merkliste, passend zu den Filtern
+  const watchlist = rated.filter((r) => r.status === "merkliste" && (!mood || matchesMood(r, mood)) && (!sp.genre || (r.genres ?? []).includes(sp.genre)) && matchesTime(r, time));
+
   const more = diverse.slice(DECK, DECK + 12);
   const interests = topInterests(profile.interest, 8);
   const learned = topPreferences(prefs, 8);
+  const deckKey = JSON.stringify([sp.stimmung, sp.genre, sp.zeit, sp.zeitraum, sp.modus]);
 
   return (
     <>
       <h1>Was soll es heute werden?</h1>
+      <p className="caption finder-sub">
+        Für dich ausgewählt aus {candidates.length.toLocaleString("de-DE")} passenden Filmen · gelernt aus {ratedCount} Bewertungen
+      </p>
 
-      <div className="moods">
-        {MOODS.map((m) => {
-          const on = mood?.key === m.key;
-          return (
-            <Link key={m.key} href={href(sp, { stimmung: on ? undefined : m.key })} className={`mood ${on ? "on" : ""}`}
-              style={{ ["--tint" as string]: m.tint }} aria-current={on}>
-              <span className="mood-label">{m.label}</span>
-              <span className="mood-hint">{m.hint}</span>
-            </Link>
-          );
-        })}
-      </div>
+      <FinderFilters filters={filters} />
 
-      <div className="toolbar" style={{ marginTop: 14 }}>
-        <div className="segmented" style={{ minWidth: 260 }}>
-          <Link href={href(sp, { modus: undefined })} aria-pressed={!surprise} className="seg-link">Sichere Wahl</Link>
-          <Link href={href(sp, { modus: "ueberrasch" })} aria-pressed={surprise} className="seg-link">Überrasch mich</Link>
-        </div>
-        <div className="row" style={{ gap: 6 }}>
-          {(Object.keys(TIMES) as TimeKey[]).map((k) => (
-            <Link key={k} href={href(sp, { zeit: k === "egal" ? undefined : k })}
-              className={`pill ${time === k ? "on" : ""}`}>{TIMES[k].label}</Link>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: 16 }}>
         {picks.length > 0 ? (
-          <>
-            <PickDeck picks={picks} />
-            {more.length > 0 && (
-              <>
-                <h2 className="section">Weitere Ideen</h2>
-                <div className="grid">{more.map((r) => <Tile key={r.title.id} r={r} />)}</div>
-              </>
-            )}
-          </>
+          <PickDeck picks={picks} deckKey={deckKey} />
         ) : (
-          <div className="empty">
-            Dafür haben wir gerade nichts Passendes im Katalog. Probier eine andere Stimmung oder Länge
-            {surprise ? " – oder „Sichere Wahl“" : ""}.
-          </div>
+          <div className="empty">Dafür haben wir gerade nichts Passendes im Katalog. Probier einen anderen Filter.</div>
         )}
       </div>
+
+      {becauseRows.map(({ anchor, items }) => (
+        <Row key={anchor.id} title={`Weil du „${anchor.title}“ mochtest`} sub={`${anchor.rating}/10`} items={items} />
+      ))}
+      <Row title="Geheimtipps für dich" sub="wenig bekannt, passt aber" items={gems.map((r) => ({ t: r.title, caption: shortReason(r) }))} />
+      <Row title="Von deiner Merkliste" items={watchlist.slice(0, 15).map((t) => ({ t, caption: String(t.release_year ?? "") }))} />
+      <Row title="Weitere Ideen" items={more.map((r) => ({ t: r.title, caption: shortReason(r) }))} />
 
       <details className="panel" style={{ marginTop: 28 }}>
         <summary className="eyebrow" style={{ cursor: "pointer" }}>Was die App über dich gelernt hat</summary>
         <p className="caption">
-          Basierend auf {ratedCount} Bewertungen. Bisher berücksichtigt: Genre, feine Genres, Regie, Besetzung, Drehbuch, Kamera, Musik, Themen, Vorlage, Filmreihen, Preise & Nominierungen, Budget, Schwarzweiß – vor allem aber, welche Art von Filmen du schaust (Interesse) – plus die allgemeine Qualität (TMDB-Bewertung) als Sicherheitsnetz.
-          Stimmungen beruhen vorerst auf Genres – mit Stufe 2 (KI-Merkmale wie Grundstimmung, Spannung, Humor) werden sie genauer.
+          Am wichtigsten ist, welche Art von Filmen du schaust (Interesse). Dazu kommen die allgemeine Qualität (TMDB-Bewertung)
+          und, wo deine Bewertungen ein Muster zeigen, Genre, Regie, Themen und mehr. Basierend auf {ratedCount} Bewertungen.
         </p>
-        <div className="tags" style={{ marginBottom: 0 }}>
-          {learned.map((p) => (
-            <span key={p.key} className="tag">
-              {p.label} · {p.n} Filme · Ø {p.avgScore?.toLocaleString("de-DE", { maximumFractionDigits: 1 })}
-            </span>
-          ))}
-        </div>
         {interests.length > 0 && (
           <>
-            <div className="eyebrow" style={{ margin: "14px 0 8px" }}>Was du besonders oft schaust</div>
+            <div className="eyebrow" style={{ margin: "10px 0 8px" }}>Was du besonders oft schaust</div>
             <div className="tags" style={{ marginBottom: 0 }}>
               {interests.map((x) => (
                 <span key={x.key} className="tag">{x.label} · {Math.round(x.share * 100)} % (sonst {Math.round(x.catShare * 100)} %)</span>
+              ))}
+            </div>
+          </>
+        )}
+        {learned.length > 0 && (
+          <>
+            <div className="eyebrow" style={{ margin: "14px 0 8px" }}>Was du besser bewertest als üblich</div>
+            <div className="tags" style={{ marginBottom: 0 }}>
+              {learned.map((p) => (
+                <span key={p.key} className="tag">
+                  {p.label} · {p.n} Filme · Ø {p.avgScore?.toLocaleString("de-DE", { maximumFractionDigits: 1 })}
+                </span>
               ))}
             </div>
           </>

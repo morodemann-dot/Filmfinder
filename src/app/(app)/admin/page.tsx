@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS, getCatalogSettings } from "@/lib/importer";
 import { clearBlocklist, unblockTitle } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
+import TabLink from "@/components/TabLink";
 
 // Import und KI-Probelauf dürfen bis zu 60 Sekunden pro Etappe dauern.
 export const maxDuration = 60;
@@ -73,11 +74,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       </p>
 
       <div className="segmented four five" style={{ margin: "14px 0 20px", maxWidth: 600 }}>
-        <Link href="/admin" aria-pressed={add || review || daten} className="seg-link">Hinzufügen</Link>
-        <Link href="/admin?bereich=aussortieren" aria-pressed={curate} className="seg-link">Aussortieren</Link>
-        <Link href="/admin?bereich=verdacht" aria-pressed={suspects} className="seg-link">Verdachtsfälle</Link>
-        <Link href="/admin?bereich=verwalten" aria-pressed={manage} className="seg-link">Verwalten</Link>
-        <Link href="/admin?bereich=ki" aria-pressed={ki} className="seg-link">KI</Link>
+        <TabLink href="/admin" pressed={add || review || daten}>Hinzufügen</TabLink>
+        <TabLink href="/admin?bereich=aussortieren" pressed={curate}>Aussortieren</TabLink>
+        <TabLink href="/admin?bereich=verdacht" pressed={suspects}>Verdachtsfälle</TabLink>
+        <TabLink href="/admin?bereich=verwalten" pressed={manage}>Verwalten</TabLink>
+        <TabLink href="/admin?bereich=ki" pressed={ki}>KI</TabLink>
       </div>
 
       {ki ? (
