@@ -7,7 +7,7 @@ import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabas
 import { fetchAll } from "@/lib/fetchAll";
 import { loadAiFeatures, loadTasteData } from "@/lib/tasteData";
 import { MIN_FOR_TEST } from "@/lib/evaluate";
-import { diversify, pickDiverse, SUGGEST_FROM_YEAR } from "@/lib/recommend";
+import { diversify, franchiseOf, pickDiverse, SUGGEST_FROM_YEAR } from "@/lib/recommend";
 import { formatRuntime } from "@/lib/types";
 import { ALL_SOURCES, DUEL_MODELS, DUEL_SOURCES, rankWith } from "@/lib/duel";
 
@@ -59,10 +59,14 @@ export async function duelStartRound(): Promise<{ cards: number; sources: string
     const user = await requireAdminUser();
     const supabase = await createClient();
     const [{ rated, catalog }, rows, ai] = await Promise.all([loadTasteData(supabase, user.id), duelRows(user.id), loadAiFeatures(supabase)]);
-    const open = rows.filter((r) => !r.answer).map((r) => r.title_id);
-    if (!open.length) return { cards: 0, sources: [] };
-    const { data: films } = await supabase.from("titles").select("*").in("id", open);
-    const pool = ((films ?? []) as import("@/lib/types").Title[]).filter((t) => (t.release_year ?? 0) >= SUGGEST_FROM_YEAR);
+    // Wie der echte Filmfinder (Modus Entdecken): aus dem ganzen Katalog – ungesehen, ab 1980, nicht schon im Duell
+    // beantwortet, keine weiteren Teile von Reihen/Universen, die du kennst
+    const answered = new Set(rows.filter((r) => r.answer).map((r) => r.title_id));
+    const seen = new Set(rated.map((r) => r.id));
+    const known = new Set(rated.filter((r) => r.status === "gesehen" || r.status === "nicht_interessiert").map(franchiseOf).filter(Boolean));
+    const pool = catalog.filter((t) => !seen.has(t.id) && !answered.has(t.id) && (t.release_year ?? 0) >= SUGGEST_FROM_YEAR &&
+      !known.has(franchiseOf(t)));
+    if (!pool.length) return { cards: 0, sources: [] };
 
     const models = DUEL_MODELS.filter((m) => {
       const map = ai.get(m);

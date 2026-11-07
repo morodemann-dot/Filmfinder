@@ -28,7 +28,7 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "i3", name: "Interesse ×3", interest: DEFAULT_INTEREST * 3 },
   { key: "i2_q05", name: "Interesse ×2 · Qualität halb", interest: DEFAULT_INTEREST * 2, quality: 0.5 },
   { key: "i2_q0", name: "Interesse ×2 · ohne Qualität", interest: DEFAULT_INTEREST * 2, quality: 0 },
-  { key: "i1_q05", name: "App jetzt: Interesse · Qualität halb", interest: DEFAULT_INTEREST, quality: 0.5 },
+  { key: "i1_q05", name: "Alte App: Interesse · Qualität halb", interest: DEFAULT_INTEREST, quality: 0.5 },
   { key: "v1", name: "+ 1 Interesse nach Bewertung", ...APP, extra: { interestByRating: true } },
   { key: "v2", name: "+ 2 Ähnlichkeit zu Lieblingen", ...APP, extra: { similarityWeight: 2 } },
   { key: "v2s", name: "+ 2 Ähnlichkeit (stark)", ...APP, extra: { similarityWeight: 5 } },
@@ -36,7 +36,9 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "v4", name: "+ 4 Herkunft, Sprache, Studio", ...APP, extra: { originWeight: 0.4 } },
   { key: "v5", name: "+ 5 Qualität je Genre", ...APP, extra: { genreQuality: true } },
   { key: "v6", name: "+ 6 Genre-Kombinationen", ...APP, extra: { genrePairWeight: 0.6 } },
-  { key: "vall", name: "Alle Verbesserungen 1–6", ...APP, extra: ALL_EXTRAS },
+  { key: "vall", name: "Neue App: alle Verbesserungen 1–6", ...APP, extra: ALL_EXTRAS },
+  { key: "vall_nosim", name: "Alle Verbesserungen ohne Ähnlichkeit", ...APP, extra: { ...ALL_EXTRAS, similarityWeight: 0 } },
+  { key: "vall_q0", name: "Alle Verbesserungen ohne Qualität", ...APP, quality: 0, extra: ALL_EXTRAS },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 
@@ -45,10 +47,11 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Runde 6–?: Interesse ×1 / ×2 / +Haiku → Haiku klar schwächer (55 %).
 // Jetzt: App-Einstellung vs. Interesse ×2 vs. ganz ohne Qualität
 // Runde 1–5: ohne / Haiku / Haiku nur KI (alle 38 %). Rücktest: Interesse ~75 %, KI bringt nichts dazu.
-// Danach: App-Einstellung vs. Interesse ×2 vs. ohne Qualität. Jetzt: App vs. alle Verbesserungen vs. Ähnlichkeit
-export const DUEL_SOURCES: SourceDef[] = [byKey("i1_q05"), byKey("vall"), byKey("v2")];
+// Danach: App vs. Interesse ×2 vs. ohne Qualität; dann App vs. alle Verbesserungen vs. Ähnlichkeit (5 Runden).
+// Jetzt (aus dem ganzen Katalog): neue App (alle 1–6) vs. alte App vs. alle ohne Ähnlichkeit
+export const DUEL_SOURCES: SourceDef[] = [byKey("vall"), byKey("i1_q05"), byKey("vall_nosim")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
-export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "v1", "v2", "v2s", "v3", "v4", "v5", "v6", "vall", "interesse_stark"].map(byKey);
+export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "v1", "v2", "v2s", "v3", "v4", "v5", "v6", "vall", "vall_nosim", "vall_q0"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
 export const sourceName = (k: string) => ALL_SOURCES.find((s) => s.key === k)?.name ?? k;
 

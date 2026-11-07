@@ -101,7 +101,11 @@ export const DEFAULT_INTEREST = 1;
 // Einstellung für Vorschläge unbekannter Filme (Filmfinder) – festgelegt per Modell-Duell
 // (325 Antworten, Nov. 2026): Interesse ×1 mit halber allgemeiner Qualität lag vorn (72 %),
 // "Bisher" (v. a. Qualität) bei 47 %, KI-Merkmale (Haiku) brachten nichts dazu.
-export const APP_SETTINGS = { interestWeight: 1, qualityWeight: 0.5 } as const; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
+// Nov. 2026 (431 Antworten): "Alle Verbesserungen 1–6" 76 % (Rücktest) und 35 % live – beides vorn → übernommen.
+export const APP_SETTINGS: ScoreOptions = {
+  interestWeight: 1, qualityWeight: 0.5,
+  interestByRating: true, similarityWeight: 2, rareKeywords: true, originWeight: 0.4, genreQuality: true, genrePairWeight: 0.6,
+};
 
 type Feature = { key: string; kind: FeatureKind; label: string };
 
@@ -328,7 +332,7 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     let pos = rated.filter((r) => r.favorite || (r.status === "gesehen" && (r.rating ?? 0) >= 9));
     if (pos.length < 8) pos = rated.filter((r) => r.favorite || (r.status === "gesehen" && (r.rating ?? 0) >= 8));
     anchorsPos = pos.slice(0, 120).map((t) => ({ t, v: simVector(t), fav: !!t.favorite }));
-    anchorsNeg = rated.filter((r) => r.status === "gesehen" && r.rating != null && r.rating <= 4).slice(0, 80).map(simVector);
+    anchorsNeg = rated.filter((r) => r.status === "gesehen" && r.rating != null && r.rating <= 4).slice(0, 80).map((r) => simVector(r));
   }
 
   // 5) Qualität je Genre: Durchschnitt pro Hauptgenre im Katalog (vorsichtig gemittelt)
@@ -438,9 +442,9 @@ const SIM_WEIGHT: Partial<Record<FeatureKind, number>> = {
   genre: 0.5, subgenre: 1, thema: 0.8, regie: 1.2, drehbuch: 0.8, vorlage: 0.3, reihe: 1.5, besetzung: 0.4,
   jahrzehnt: 0.2, kamera: 0.3, musik: 0.3, genrepaar: 0.6,
 };
-export function simVector(t: Title) {
+export function simVector(t: Title, feats?: Feature[]) {
   const m = new Map<string, number>();
-  for (const f of featuresOf(t)) {
+  for (const f of feats ?? featuresOf(t)) {
     const x = SIM_WEIGHT[f.kind] ?? (f.kind.startsWith("ki_") ? 0.3 : 0);
     if (x) m.set(f.key, x);
   }
@@ -523,7 +527,7 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
     // Ähnlichkeit zu deinen Lieblingsfilmen (und Abstand zu Flops)
     let similarTo: { t: Title; s: number; fav: boolean } | null = null;
     if (sw && profile.anchorsPos.length) {
-      const v = simVector(t);
+      const v = simVector(t, feats);
       for (const a of profile.anchorsPos) {
         if (a.t.id === t.id) continue;
         const s = similarity(v, a.v);

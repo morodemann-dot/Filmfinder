@@ -2,7 +2,7 @@ import { Fragment, Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import AiPilot from "./AiPilot";
 import DuelPlay from "./DuelPlay";
-import { PrepareButton, ResetButton } from "./DuelControls";
+import { ResetButton } from "./DuelControls";
 import { aiPilotStatus, type AiStatus } from "@/app/catalog-actions";
 import { duelAnswers, duelCards, duelResults, type DuelCard } from "@/app/ki-actions";
 import { createClient } from "@/lib/supabase/server";
@@ -109,19 +109,14 @@ export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro
       <div className="panel">
         <div className="eyebrow" style={{ marginBottom: 4 }}>3 · Modell-Duell (blind)</div>
         <p className="caption" style={{ marginTop: 0 }}>
-          Drei Varianten wählen ihre besten Vorschläge aus Filmen ab 1980, die du noch nicht eingeordnet hast: die aktuelle App-Einstellung,
-          „Alle Verbesserungen 1–6“ und „Ähnlichkeit zu Lieblingen“. Ganz ohne KI.
+          Drei Varianten wählen ihre besten Vorschläge aus dem ganzen Katalog – wie der echte Filmfinder (ab 1980, nichts schon Eingeordnetes,
+          keine weiteren Teile bekannter Reihen): die neue App (alle Verbesserungen), die alte App und „alle Verbesserungen ohne Ähnlichkeit“. Ganz ohne KI.
           Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
           Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
           Diese Antworten fließen <strong>nicht</strong> in dein Geschmacksprofil ein.
         </p>
         {!duel ? (
           <p className="caption" style={{ margin: 0 }}>Zuerst die <strong>Ergänzung 14</strong> im Supabase SQL Editor ausführen, dann diese Seite neu laden.</p>
-        ) : duel.pool === 0 ? (
-          <>
-            <p className="small">Schritt 1: Die App wählt 100 Testfilme ab 1980 aus (50, die sie für passend hält, und 50 zufällige solide Filme).</p>
-            <PrepareButton />
-          </>
         ) : (
           <div style={{ display: "grid", gap: 16 }}>
             {DUEL_MODELS.length > 0 && (
@@ -164,7 +159,7 @@ export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro
               </div>
             )}
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <PrepareButton label="100 weitere Testfilme" />
+              <span />
               <ResetButton />
             </div>
           </div>
