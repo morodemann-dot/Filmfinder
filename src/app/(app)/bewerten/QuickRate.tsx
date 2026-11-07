@@ -200,15 +200,19 @@ export default function QuickRate({
       </div>
 
       {/* Alle anderen Antworten in einer Reihe */}
-      <div className="quick-acts">
+      {/* Weitere Antworten: eine ruhige Glas-Leiste mit drei gleichen Feldern */}
+      <div className="quick-acts" role="group" aria-label="Weitere Antworten">
         <button className={`qa ${shown?.status === "nicht_gesehen" ? "on" : ""}`} onClick={() => answer("nicht_gesehen")}>
-          <span className="qa-icon" aria-hidden>»</span>Nicht gesehen
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+          <span>Nicht gesehen</span>
         </button>
-        <button className={`qa ${shown?.status === "merkliste" ? "on" : ""}`} onClick={() => answer("merkliste")}>
-          <span className="qa-icon keep" aria-hidden>+</span>Merkliste
+        <button className={`qa keep ${shown?.status === "merkliste" ? "on" : ""}`} onClick={() => answer("merkliste")}>
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z" /></svg>
+          <span>Merkliste</span>
         </button>
-        <button className={`qa ${shown?.status === "nicht_interessiert" ? "on" : ""}`} onClick={() => answer("nicht_interessiert")}>
-          <span className="qa-icon remove" aria-hidden>✕</span>Kein Interesse
+        <button className={`qa remove ${shown?.status === "nicht_interessiert" ? "on" : ""}`} onClick={() => answer("nicht_interessiert")}>
+          <svg viewBox="0 0 24 24" aria-hidden><circle cx="12" cy="12" r="8.5" /><path d="M6 18L18 6" /></svg>
+          <span>Kein Interesse</span>
         </button>
       </div>
 

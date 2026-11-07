@@ -96,3 +96,5 @@
 .theme-toggle.light .tt-cut { transform: translate(10px, -10px); }
 .theme-toggle.light .tt-rays { opacity: 1; transform: rotate(0deg) scale(1); }
 @media (prefers-reduced-motion: reduce) { .theme-toggle * { transition: none !important; } }
+[data-theme="light"] .qa.on { background: rgba(255, 122, 0, 0.12); }
+[data-theme="light"] .qa.remove.on { background: rgba(229, 53, 43, 0.1); }

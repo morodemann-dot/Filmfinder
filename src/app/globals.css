@@ -544,16 +544,6 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .quick-fav.on { color: #ff375f; background: rgba(255, 255, 255, 0.9); }
 .quick-fav:active { transform: scale(0.9); }
 .quick h2 { margin: 4px 0 2px; }
-.quick-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 12px; }
-.qa {
-  display: grid; justify-items: center; gap: 4px; padding: 8px 2px; border-radius: 14px; border: 0.5px solid var(--line);
-  background: var(--surface); color: var(--muted); font: inherit; font-size: 0.8rem; line-height: 1.15; cursor: pointer;
-}
-.qa-icon { font-size: 1.05rem; color: var(--text); font-weight: 700; }
-.qa-icon.keep { color: var(--ok); }
-.qa-icon.remove { color: var(--danger); }
-.qa.on { border-color: var(--accent); color: var(--text); }
-.qa:active { transform: scale(0.95); }
 .scale-help { text-align: left; margin: 0 0 4px; }
 .scale-help summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); text-align: center; padding: 6px; }
 .scale { padding: 10px 2px 4px; display: grid; gap: 12px; }
@@ -564,3 +554,26 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .scale-num { font-weight: 700; text-align: center; }
 .scale-list.other { border-top: 0.5px solid var(--line); padding-top: 10px; color: var(--muted); }
 .scale-list.other strong { color: var(--text); }
+
+/* Weitere Antworten beim Bewerten: eine Glas-Leiste wie die Leiste unten */
+.quick-acts {
+  display: grid; grid-template-columns: repeat(3, 1fr); margin: 6px 0 10px; padding: 4px; border-radius: 22px;
+  background: var(--glass, var(--surface)); border: 0.5px solid var(--glass-edge, var(--line)); box-shadow: var(--glass-hi, none);
+  backdrop-filter: var(--glass-blur, none); -webkit-backdrop-filter: var(--glass-blur, none);
+}
+.qa {
+  position: relative; display: grid; justify-items: center; gap: 4px; padding: 9px 4px 8px; border: 0; border-radius: 18px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 0.74rem; font-weight: 500; cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.12s ease; -webkit-tap-highlight-color: transparent;
+}
+.qa + .qa::before { /* feine Trennlinie */
+  content: ""; position: absolute; left: 0; top: 22%; bottom: 22%; width: 0.5px; background: var(--line);
+}
+.qa svg { width: 22px; height: 22px; fill: none; stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.2s ease; }
+.qa:active { transform: scale(0.94); background: var(--glass-on, var(--surface-2)); }
+.qa.on { background: var(--glass-on, var(--surface-2)); color: var(--text); }
+.qa.on + .qa::before, .qa.on::before { opacity: 0; }
+.qa.keep.on svg { stroke: var(--accent); fill: color-mix(in srgb, var(--accent) 25%, transparent); }
+.qa.remove.on svg { stroke: var(--danger); }
+.qa.on svg { stroke: var(--accent); }
+.qa.remove.on svg { stroke: var(--danger); }
