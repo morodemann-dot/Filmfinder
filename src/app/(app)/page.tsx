@@ -72,18 +72,20 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const profile = buildProfile([...rated, ...duelLearn], opts, catalog);
   const { prefs, ratedCount } = profile;
 
-  if (ratedCount < MIN_RATINGS) {
+  // Start schon früher möglich, wenn der Geschmacks-Check genug Antworten hat (2 Antworten ≈ 1 Bewertung)
+  if (ratedCount + Math.floor(duelAns.size / 2) < MIN_RATINGS) {
     return (
       <>
         <h1>Was soll es heute werden?</h1>
         <div className="empty">
           <p>
             Damit die App deinen Geschmack erkennen kann, bewerte bitte mindestens <strong>{MIN_RATINGS} Filme</strong>
-            {" "}(bisher: {ratedCount}).
+            {" "}(bisher: {ratedCount}) – oder mach den Geschmacks-Check, das geht noch schneller.
           </p>
           <div className="row" style={{ justifyContent: "center" }}>
             <Link href="/bewerten" className="btn primary">Jetzt bewerten</Link>
             <Link href="/imdb" className="btn">IMDb importieren</Link>
+            <Link href="/bewerten/check" className="btn">⚡ Geschmacks-Check</Link>
           </div>
         </div>
       </>
@@ -248,6 +250,14 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
       <h1>{mitFriend ? `Was schaut ihr heute?` : "Was soll es heute werden?"}</h1>
       <FinderFilters filters={filters} />
       <SurpriseMe pool={surprise} />
+      {duelAns.size < 60 && (
+        <Link href="/bewerten/check" className="panel check-invite">
+          <span className="bolt" aria-hidden>⚡</span>
+          <span><strong>Vorschläge schneller verbessern</strong>
+            <span className="caption">Geschmacks-Check: 10 Filme, 1 Minute – „reizt mich“ oder „eher nicht“.</span></span>
+          <span className="caption" aria-hidden>›</span>
+        </Link>
+      )}
 
       <div style={{ marginTop: 16 }}>
         {picks.length > 0 ? (

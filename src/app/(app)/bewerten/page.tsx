@@ -1,3 +1,4 @@
+import Link from "next/link";
 import QuickRate from "./QuickRate";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
@@ -29,7 +30,10 @@ export default async function RatePage() {
 
   return (
     <>
-      <h1 className="page-title-compact">Schnell bewerten</h1>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+        <h1 className="page-title-compact">Schnell bewerten</h1>
+        <Link href="/bewerten/check" className="check-link">⚡ Geschmacks-Check</Link>
+      </div>
       <QuickRate titles={queue} alreadyDone={done.size} ratedBefore={mine.filter((m) => m.rating != null).length} />
     </>
   );

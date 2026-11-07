@@ -100,6 +100,7 @@ export type ScoreOptions = {
   originWeight?: number; // 4) Herkunftsland, Originalsprache, Studio als Merkmal
   genreQuality?: boolean; // 5) Qualität im Vergleich zum Genre (Horror mit 7,0 ist stark)
   genrePairWeight?: number; // 6) Genre-Kombinationen (Sci-Fi + Drama ≠ Sci-Fi + Action)
+  swipeWeight?: number; // 8) Merkliste / "Kein Interesse" stärker zählen (1 = wie bisher)
   duelWeight?: number; // 7) Duell-Antworten zu unbekannten Filmen (passt / passt nicht) als Lernstoff
   qualityWeight?: number; // 1 = so stark, wie es zu deinen Bewertungen passt; 0 = ignorieren
   tasteWeight?: number; // wie stark dein persönlicher Geschmack zählt (wird per Messtest gewählt)
@@ -225,11 +226,11 @@ function reasonWeight(reason: string | null | undefined, f: Feature) {
 }
 
 // Wie stark ein gesehener Film fürs Interesse zählt (Schalter interestByRating) – Lieblingsfilme immer stark
-function interestWeightOf(r: RatedTitle, byRating: boolean, duelWeight = 0) {
+function interestWeightOf(r: RatedTitle, byRating: boolean, duelWeight = 0, swipe = 1) {
   // 7) Duell: "passt" = will ich sehen (ähnlich Merkliste, etwas stärker), "passt nicht" = eher kein Interesse
   if (r.status === DUEL_YES) return 0.8 * duelWeight;
   if (r.status === DUEL_NO) return -0.5 * duelWeight;
-  let w = r.status === "gesehen" ? 1 : r.status === "merkliste" ? 0.5 : r.status === "nicht_interessiert" ? -0.7 : 0;
+  let w = r.status === "gesehen" ? 1 : r.status === "merkliste" ? 0.5 * swipe : r.status === "nicht_interessiert" ? -0.7 * swipe : 0;
   if (byRating && r.status === "gesehen" && r.rating) {
     const x = r.rating;
     w = x >= 9 ? 1.6 : x >= 8 ? 1.3 : x >= 7 ? 1 : x >= 6 ? 0.6 : x >= 5 ? 0.25 : -0.4;
@@ -246,7 +247,8 @@ export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: Score
   const mine = new Map<string, { f: Feature; n: number }>();
   let total = 0, totalAi = 0;
   for (const r of rated) {
-    const w = interestWeightOf(r, !!opts.interestByRating, opts.duelWeight ?? 0);
+    const swipe = opts.swipeWeight ?? 1;
+    const w = interestWeightOf(r, !!opts.interestByRating, opts.duelWeight ?? 0, swipe);
     if (!w) continue;
     if (w > 0) { total += w; if (r.ai) totalAi += w; }
     const seen = new Set<string>();
@@ -254,7 +256,7 @@ export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: Score
       if (seen.has(f.key)) continue;
       seen.add(f.key);
       const a = mine.get(f.key) ?? { f, n: 0 };
-      a.n += w < 0 ? (r.status === "nicht_interessiert" ? reasonWeight(r.reason, f) : w) : w;
+      a.n += w < 0 ? (r.status === "nicht_interessiert" ? reasonWeight(r.reason, f) * swipe : w) : w;
       mine.set(f.key, a);
     }
   }
@@ -323,8 +325,8 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     // Gelernt wird nur, was von der Erwartung abweicht: Mag jemand Nolan nur, weil Nolan-Filme
     // allgemein gut sind, ist das schon über die Qualität abgedeckt und zählt hier nicht doppelt.
     if (r.status === "gesehen" && r.rating) add(r, r.rating - expected(r), 1, r.rating);
-    else if (r.status === "nicht_interessiert") add(r, -2, 0.5, null); // schwaches Minus
-    else if (r.status === "merkliste") add(r, 1, 0.3, null); // sehr schwaches Plus
+    else if (r.status === "nicht_interessiert") add(r, -2, 0.5 * (opts.swipeWeight ?? 1), null); // schwaches Minus
+    else if (r.status === "merkliste") add(r, 1, 0.3 * (opts.swipeWeight ?? 1), null); // sehr schwaches Plus
     else if (r.status === DUEL_YES && opts.duelWeight) add(r, 1.5, 0.4 * opts.duelWeight, null);
     else if (r.status === DUEL_NO && opts.duelWeight) add(r, -1.5, 0.4 * opts.duelWeight, null);
     if (r.favorite) add(r, 2, 0.8, null); // Lieblingsfilm: zusätzliches, deutliches Plus

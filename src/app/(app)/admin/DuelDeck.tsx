@@ -8,9 +8,16 @@ import { duelAnswer, type DuelCard } from "@/app/ki-actions";
 // Blindes Modell-Duell: passt der Film zu dir? (fließt NICHT in dein Geschmacksprofil ein)
 type Answer = "passt" | "passt_nicht" | "gesehen";
 const THRESHOLD = 90;
-const STAMP: Record<Answer, string> = { passt: "PASST", passt_nicht: "PASST NICHT", gesehen: "GESEHEN" };
 
-export default function DuelDeck({ cards, onFinished }: { cards: DuelCard[]; onFinished?: () => void }) {
+// Wird auch für den "Geschmacks-Check" aller Nutzer verwendet (andere Beschriftung, eigene Speicher-Funktion)
+export type DeckLabels = { yes: string; no: string; stampYes: string; stampNo: string; eyebrow: string };
+const DUEL_LABELS: DeckLabels = { yes: "Passt zu mir", no: "Passt nicht", stampYes: "PASST", stampNo: "PASST NICHT", eyebrow: "Testvorschlag" };
+
+export default function DuelDeck({ cards, onFinished, onAnswer = duelAnswer, labels = DUEL_LABELS }: {
+  cards: DuelCard[]; onFinished?: () => void;
+  onAnswer?: (titleId: number, a: Answer | null) => Promise<void>; labels?: DeckLabels;
+}) {
+  const STAMP: Record<Answer, string> = { passt: labels.stampYes, passt_nicht: labels.stampNo, gesehen: "GESEHEN" };
   const router = useRouter();
   const [index, setIndex] = useState(0);
   const [history, setHistory] = useState<DuelCard[]>([]);
@@ -31,7 +38,7 @@ export default function DuelDeck({ cards, onFinished }: { cards: DuelCard[]; onF
     setIndex((i) => i + 1);
     setDx(0);
     setHistory((h) => [...h.slice(-19), c]);
-    duelAnswer(c.id, a).catch(() => setError(`„${c.title}“ konnte nicht gespeichert werden.`));
+    onAnswer(c.id, a).catch(() => setError(`„${c.title}“ konnte nicht gespeichert werden.`));
     if (index + 1 >= cards.length) setTimeout(() => (onFinished ? onFinished() : router.refresh()), 500);
   }
 
@@ -40,7 +47,7 @@ export default function DuelDeck({ cards, onFinished }: { cards: DuelCard[]; onF
     if (!last) return;
     setHistory((h) => h.slice(0, -1));
     setIndex((i) => Math.max(0, i - 1));
-    duelAnswer(last.id, null).catch(() => {});
+    onAnswer(last.id, null).catch(() => {});
   }
 
   const progress = Math.min(1, Math.abs(dx) / THRESHOLD);
@@ -48,7 +55,7 @@ export default function DuelDeck({ cards, onFinished }: { cards: DuelCard[]; onF
   return (
     <div className="pick">
       <div className="caption" style={{ textAlign: "center", marginBottom: 8 }}>
-        {Math.min(index + 1, cards.length)} / {cards.length} · Wischen: rechts = passt, links = passt nicht
+        {Math.min(index + 1, cards.length)} / {cards.length} · Wischen: rechts = {labels.yes.toLowerCase()}, links = {labels.no.toLowerCase()}
       </div>
       <div className="deck pick-deck">
         {current ? (
@@ -66,11 +73,11 @@ export default function DuelDeck({ cards, onFinished }: { cards: DuelCard[]; onF
               >
                 {i === 0 && (
                   <>
-                    <div className="stamp keep" style={{ opacity: Math.max(0, Math.min(1, dx / THRESHOLD)) }}>PASST</div>
-                    <div className="stamp remove" style={{ opacity: Math.max(0, Math.min(1, -dx / THRESHOLD)) }}>PASST NICHT</div>
+                    <div className="stamp keep" style={{ opacity: Math.max(0, Math.min(1, dx / THRESHOLD)) }}>{labels.stampYes}</div>
+                    <div className="stamp remove" style={{ opacity: Math.max(0, Math.min(1, -dx / THRESHOLD)) }}>{labels.stampNo}</div>
                   </>
                 )}
-                <Face c={c} />
+                <Face c={c} eyebrow={labels.eyebrow} />
               </div>
             );
           }).reverse()
@@ -83,20 +90,20 @@ export default function DuelDeck({ cards, onFinished }: { cards: DuelCard[]; onF
             <div key={`fly-${f.card.id}`} className="swipe-card fly" aria-hidden
               style={{ zIndex: 20, ["--from-x" as string]: `${f.from}px`, ["--from-rot" as string]: `${f.from / 18}deg`, ["--to-x" as string]: `${dir * 700}px`, ["--to-rot" as string]: `${dir * 28}deg` }}>
               <div className={`stamp ${dir === 1 ? "keep" : "remove"}`} style={{ opacity: 1 }}>{STAMP[f.answer]}</div>
-              <Face c={f.card} />
+              <Face c={f.card} eyebrow={labels.eyebrow} />
             </div>
           );
         })}
       </div>
       <div className="pick-actions" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
         <button className="act" onClick={() => answer("passt_nicht")} disabled={!current}>
-          <span className="round remove" aria-hidden>✕</span>Passt nicht
+          <span className="round remove" aria-hidden>✕</span>{labels.no}
         </button>
         <button className="act" onClick={() => answer("gesehen")} disabled={!current}>
           <span className="round seen" aria-hidden>✓</span>Schon gesehen
         </button>
         <button className="act" onClick={() => answer("passt")} disabled={!current}>
-          <span className="round keep" aria-hidden>♥</span>Passt zu mir
+          <span className="round keep" aria-hidden>♥</span>{labels.yes}
         </button>
       </div>
       <div style={{ textAlign: "center", marginTop: 6 }}>
@@ -107,12 +114,12 @@ export default function DuelDeck({ cards, onFinished }: { cards: DuelCard[]; onF
   );
 }
 
-function Face({ c }: { c: DuelCard }) {
+function Face({ c, eyebrow }: { c: DuelCard; eyebrow: string }) {
   return (
     <>
       <div className="swipe-poster"><Poster path={c.poster_path} title={c.title} size="w500" /></div>
       <div className="swipe-info">
-        <div className="eyebrow" style={{ color: "var(--accent)" }}>Testvorschlag</div>
+        <div className="eyebrow" style={{ color: "var(--accent)" }}>{eyebrow}</div>
         <div className="swipe-title">{c.title}</div>
         <div className="caption">{c.meta}</div>
       </div>

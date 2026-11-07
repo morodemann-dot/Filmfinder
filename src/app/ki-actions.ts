@@ -136,7 +136,7 @@ export type DuelCard = { id: number; title: string; poster_path: string | null; 
 // 3) Karten der aktuellen Runde (gemischt, ohne Hinweis auf die Quelle)
 export async function duelCards(): Promise<DuelCard[]> {
   const user = await requireAdminUser();
-  const rows = (await duelRows(user.id)).filter((r) => !r.answer && r.picked_by.length);
+  const rows = (await duelRows(user.id)).filter((r) => !r.answer && r.picked_by.length && !r.picked_by.includes("check"));
   if (!rows.length) return [];
   const { data } = await createAdminClient().from("titles")
     .select("id,title,poster_path,release_year,runtime_seconds,genres").in("id", rows.map((r) => r.title_id));
