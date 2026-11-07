@@ -39,7 +39,7 @@ export async function duelPreparePool(): Promise<{ added: number; error?: string
     const free = catalog.filter((t) => !skip.has(t.id) && (t.release_year ?? 0) >= SUGGEST_FROM_YEAR);
     // Bereits vorhandene Testfilme zählen bei der Vielfalt mit
     const already = catalog.filter((t) => existing.some((r) => r.title_id === t.id));
-    const top = diversify(rankWith(DUEL_SOURCES[1], rated, catalog, new Map(), free).map((r) => r.title), POOL_SIZE / 2, already);
+    const top = diversify(rankWith(DUEL_SOURCES[0], rated, catalog, new Map(), free).map((r) => r.title), POOL_SIZE / 2, already);
     const rest = free.filter((t) => !top.includes(t) && (t.vote_count ?? 0) >= 500);
     for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
     const ids = [...top, ...diversify(rest, POOL_SIZE - top.length, [...already, ...top])].map((t) => t.id);
