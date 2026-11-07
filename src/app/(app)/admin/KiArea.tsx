@@ -113,7 +113,7 @@ export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro
           keine weiteren Teile bekannter Reihen): die neue App (alle Verbesserungen), die alte App und „alle Verbesserungen ohne Ähnlichkeit“. Ganz ohne KI.
           Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
           Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
-          Diese Antworten fließen <strong>nicht</strong> in dein Geschmacksprofil ein.
+          Deine Antworten fließen <strong>auch</strong> in dein Geschmacksprofil ein – jede Runde macht die Vorschläge im Filmfinder besser.
         </p>
         {!duel ? (
           <p className="caption" style={{ margin: 0 }}>Zuerst die <strong>Ergänzung 14</strong> im Supabase SQL Editor ausführen, dann diese Seite neu laden.</p>

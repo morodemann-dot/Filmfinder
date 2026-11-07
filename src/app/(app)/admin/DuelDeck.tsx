@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Poster from "@/components/Poster";
 import { duelAnswer, type DuelCard } from "@/app/ki-actions";
 
-// Blindes Modell-Duell: passt der Film zu dir? (fließt NICHT in dein Geschmacksprofil ein)
+// Blindes Modell-Duell: passt der Film zu dir? (Antworten fließen seit Nov. 2026 ins Profil ein, Verbesserung 7)
 type Answer = "passt" | "passt_nicht" | "gesehen";
 const THRESHOLD = 90;
 
