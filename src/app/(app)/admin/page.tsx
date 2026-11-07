@@ -14,10 +14,7 @@ import { clearBlocklist, unblockTitle } from "@/app/actions";
 import { createAdminClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
 
-// Server-Aktionen dieser Seite (z. B. KI-Probelauf) dürfen bis zu 60 Sekunden laufen
-export const maxDuration = 60;
-
-// Der Import darf bis zu 60 Sekunden dauern.
+// Import und KI-Probelauf dürfen bis zu 60 Sekunden pro Etappe dauern.
 export const maxDuration = 60;
 
 // Katalog: nur für Admins (E-Mail steht in ADMIN_EMAILS).
