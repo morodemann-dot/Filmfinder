@@ -5,7 +5,7 @@ import type { AiFeatures, AiModelKey } from "./aiFeatures";
 import type { Title } from "./types";
 
 // Varianten im Modell-Duell
-export type SourceDef = { key: string; name: string; model?: AiModelKey; onlyAi?: boolean; interest?: number };
+export type SourceDef = { key: string; name: string; model?: AiModelKey; onlyAi?: boolean; interest?: number; quality?: number };
 
 // "Nur KI-Merkmale": alle übrigen Merkmalsarten (Regie, Genres, Besetzung …) weglassen
 export const NON_AI_KINDS = (Object.keys(KIND_NAMES) as FeatureKind[]).filter((k) => !(AI_KINDS as string[]).includes(k));
@@ -19,6 +19,12 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "interesse_stark", name: "Neu: Interesse ×2", interest: DEFAULT_INTEREST * 2 },
   { key: "interesse_haiku_ki", name: "Neu: Interesse + Haiku (nur KI)", model: "haiku", onlyAi: true, interest: DEFAULT_INTEREST },
   { key: "interesse_haiku", name: "Neu: Interesse + Haiku (alle)", model: "haiku", interest: DEFAULT_INTEREST },
+  // Feinabstimmung (nur im nachträglichen Test): Stärke des Interesses und Anteil der allgemeinen Qualität
+  { key: "i15", name: "Interesse ×1,5", interest: DEFAULT_INTEREST * 1.5 },
+  { key: "i3", name: "Interesse ×3", interest: DEFAULT_INTEREST * 3 },
+  { key: "i2_q05", name: "Interesse ×2 · Qualität halb", interest: DEFAULT_INTEREST * 2, quality: 0.5 },
+  { key: "i2_q0", name: "Interesse ×2 · ohne Qualität", interest: DEFAULT_INTEREST * 2, quality: 0 },
+  { key: "i1_q05", name: "Interesse · Qualität halb", interest: DEFAULT_INTEREST, quality: 0.5 },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 
@@ -27,7 +33,7 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Jetzt: Interesse normal vs. ×2 vs. mit Haiku (alle Merkmale)
 export const DUEL_SOURCES: SourceDef[] = [byKey("interesse"), byKey("interesse_stark"), byKey("interesse_haiku")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
-export const EVAL_SOURCES: SourceDef[] = ["ohne", "haiku_ki", "interesse", "interesse_stark", "interesse_haiku_ki", "interesse_haiku"].map(byKey);
+export const EVAL_SOURCES: SourceDef[] = ["ohne", "interesse", "i15", "interesse_stark", "i3", "i1_q05", "i2_q05", "i2_q0", "interesse_haiku"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
 export const sourceName = (k: string) => ALL_SOURCES.find((s) => s.key === k)?.name ?? k;
 
@@ -38,7 +44,7 @@ export function rankWith(src: SourceDef, rated: RatedTitle[], catalog: Title[], 
   const c = map ? withAi(cands, map) : cands;
   const cat = map ? withAi(catalog, map) : catalog;
   const { opts } = tuneOptions(r, src.onlyAi ? { skipKinds: NON_AI_KINDS } : {});
-  const o = { ...opts, interestWeight: src.interest ?? 0 };
+  const o = { ...opts, interestWeight: src.interest ?? 0, qualityWeight: src.quality ?? opts.qualityWeight };
   return recommend(c, buildProfile(r, o, src.interest ? cat : undefined), o);
 }
 
