@@ -14,6 +14,16 @@ import { aspectStrength } from "./aspects";
 import { AI_SCALES, type AiScale } from "./aiFeatures";
 
 // reason: Grund bei "Kein Interesse"; aspects: was gefallen/gestört hat ("+regie:Nolan", "-aspekt:langatmig")
+// 7) Antworten aus dem Modell-Duell als zusätzliche Einträge (nur fürs Profil, nicht als "gesehen")
+export const DUEL_YES = "duell_passt";
+export const DUEL_NO = "duell_nicht";
+export function duelEntries(answers: Map<number, boolean>, byId: Map<number, Title>): RatedTitle[] {
+  return [...answers].flatMap(([id, yes]) => {
+    const t = byId.get(id);
+    return t ? [{ ...t, rating: null, status: yes ? DUEL_YES : DUEL_NO }] : [];
+  });
+}
+
 export type RatedTitle = Title & { rating: number | null; status: string; reason?: string | null; aspects?: string[]; favorite?: boolean };
 
 export type FeatureKind =
@@ -90,6 +100,7 @@ export type ScoreOptions = {
   originWeight?: number; // 4) Herkunftsland, Originalsprache, Studio als Merkmal
   genreQuality?: boolean; // 5) Qualität im Vergleich zum Genre (Horror mit 7,0 ist stark)
   genrePairWeight?: number; // 6) Genre-Kombinationen (Sci-Fi + Drama ≠ Sci-Fi + Action)
+  duelWeight?: number; // 7) Duell-Antworten zu unbekannten Filmen (passt / passt nicht) als Lernstoff
   qualityWeight?: number; // 1 = so stark, wie es zu deinen Bewertungen passt; 0 = ignorieren
   tasteWeight?: number; // wie stark dein persönlicher Geschmack zählt (wird per Messtest gewählt)
   shrink?: number; // Vorsicht bei wenigen Belegen (mehr = vorsichtiger)
@@ -212,7 +223,10 @@ function reasonWeight(reason: string | null | undefined, f: Feature) {
 }
 
 // Wie stark ein gesehener Film fürs Interesse zählt (Schalter interestByRating) – Lieblingsfilme immer stark
-function interestWeightOf(r: RatedTitle, byRating: boolean) {
+function interestWeightOf(r: RatedTitle, byRating: boolean, duelWeight = 0) {
+  // 7) Duell: "passt" = will ich sehen (ähnlich Merkliste, etwas stärker), "passt nicht" = eher kein Interesse
+  if (r.status === DUEL_YES) return 0.8 * duelWeight;
+  if (r.status === DUEL_NO) return -0.5 * duelWeight;
   let w = r.status === "gesehen" ? 1 : r.status === "merkliste" ? 0.5 : r.status === "nicht_interessiert" ? -0.7 : 0;
   if (byRating && r.status === "gesehen" && r.rating) {
     const x = r.rating;
@@ -230,7 +244,7 @@ export function buildInterest(rated: RatedTitle[], catalog: Title[], opts: Score
   const mine = new Map<string, { f: Feature; n: number }>();
   let total = 0, totalAi = 0;
   for (const r of rated) {
-    const w = interestWeightOf(r, !!opts.interestByRating);
+    const w = interestWeightOf(r, !!opts.interestByRating, opts.duelWeight ?? 0);
     if (!w) continue;
     if (w > 0) { total += w; if (r.ai) totalAi += w; }
     const seen = new Set<string>();
@@ -309,6 +323,8 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     if (r.status === "gesehen" && r.rating) add(r, r.rating - expected(r), 1, r.rating);
     else if (r.status === "nicht_interessiert") add(r, -2, 0.5, null); // schwaches Minus
     else if (r.status === "merkliste") add(r, 1, 0.3, null); // sehr schwaches Plus
+    else if (r.status === DUEL_YES && opts.duelWeight) add(r, 1.5, 0.4 * opts.duelWeight, null);
+    else if (r.status === DUEL_NO && opts.duelWeight) add(r, -1.5, 0.4 * opts.duelWeight, null);
     if (r.favorite) add(r, 2, 0.8, null); // Lieblingsfilm: zusätzliches, deutliches Plus
   }
 

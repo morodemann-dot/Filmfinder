@@ -5,10 +5,10 @@ import PickDeck, { type Pick } from "@/components/PickDeck";
 import SurpriseMe, { type Surprise } from "@/components/SurpriseMe";
 import FinderFilters, { type FinderFilter } from "@/components/FinderFilters";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { loadSnoozed, loadTasteData } from "@/lib/tasteData";
+import { loadDuelAnswers, loadSnoozed, loadTasteData } from "@/lib/tasteData";
 import { tuneOptions } from "@/lib/evaluate";
 import {
-  APP_SETTINGS, ASPECT_LABELS, buildProfile, franchiseOf, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences,
+  APP_SETTINGS, ASPECT_LABELS, buildProfile, duelEntries, franchiseOf, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences,
   type RatedTitle, type Recommendation,
 } from "@/lib/recommend";
 import { MODES, MOODS, PERIODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
@@ -55,8 +55,9 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
 
   const supabase = await createClient();
   const user = await getUser();
-  const [{ rated, catalog }, snoozed, together] = await Promise.all([
+  const [{ rated, catalog }, snoozed, together, duelAns] = await Promise.all([
     loadTasteData(supabase, user!.id), loadSnoozed(supabase, user!.id), togetherFriends(user!.id),
+    APP_SETTINGS.duelWeight ? loadDuelAnswers(user!.id) : Promise.resolve(new Map<number, boolean>()),
   ]);
   // Gemeinsam schauen: nur wenn beide es freigegeben haben
   const friendsAvailable = together.me?.share_together ? together.friends : [];
@@ -66,7 +67,9 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const tuned = tuneOptions(rated).opts;
   // Interesse (welche ART von Filmen du schaust) + halbe allgemeine Qualität – im Modell-Duell am treffsichersten
   const opts = { ...tuned, ...APP_SETTINGS };
-  const profile = buildProfile(rated, opts, catalog);
+  // 7) Antworten aus dem Modell-Duell ("passt" / "passt nicht") lernen mit – zählen aber nicht als gesehen
+  const duelLearn = duelAns.size ? duelEntries(duelAns, new Map(catalog.map((t) => [t.id, t]))) : [];
+  const profile = buildProfile([...rated, ...duelLearn], opts, catalog);
   const { prefs, ratedCount } = profile;
 
   if (ratedCount < MIN_RATINGS) {

@@ -1,4 +1,4 @@
-import { AI_KINDS, buildProfile, DEFAULT_INTEREST, KIND_NAMES, recommend, type FeatureKind, type RatedTitle, type ScoreOptions } from "./recommend";
+import { AI_KINDS, buildProfile, DEFAULT_INTEREST, duelEntries, KIND_NAMES, recommend, type FeatureKind, type RatedTitle, type ScoreOptions } from "./recommend";
 import { tuneOptions } from "./evaluate";
 import { withAi } from "./tasteData";
 import type { AiFeatures, AiModelKey } from "./aiFeatures";
@@ -39,6 +39,12 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "vall", name: "Neue App: alle Verbesserungen 1–6", ...APP, extra: ALL_EXTRAS },
   { key: "vall_nosim", name: "Alle Verbesserungen ohne Ähnlichkeit", ...APP, extra: { ...ALL_EXTRAS, similarityWeight: 0 } },
   { key: "vall_q0", name: "Alle Verbesserungen ohne Qualität", ...APP, quality: 0, extra: ALL_EXTRAS },
+  // 7) Duell-Antworten als Lernstoff (fair getestet: gelernt wird nur aus den jeweils anderen Antworten)
+  { key: "d05", name: "+ 7 Duell-Antworten (leicht)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 0.5 } },
+  { key: "d1", name: "+ 7 Duell-Antworten", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 1 } },
+  { key: "d2", name: "+ 7 Duell-Antworten (stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 2 } },
+  { key: "d4", name: "+ 7 Duell-Antworten (sehr stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4 } },
+  { key: "d8", name: "+ 7 Duell-Antworten (extrem)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 8 } },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 
@@ -51,19 +57,30 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Jetzt (aus dem ganzen Katalog): neue App (alle 1–6) vs. alte App vs. alle ohne Ähnlichkeit
 export const DUEL_SOURCES: SourceDef[] = [byKey("vall"), byKey("i1_q05"), byKey("vall_nosim")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
-export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "v1", "v2", "v2s", "v3", "v4", "v5", "v6", "vall", "vall_nosim", "vall_q0"].map(byKey);
+export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "vall_nosim", "d05", "d1", "d2", "d4", "d8"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
 export const sourceName = (k: string) => ALL_SOURCES.find((s) => s.key === k)?.name ?? k;
 
+// Feinabstimmung ist aufwendig und hängt nur von den Bewertungen ab → einmal rechnen, mehrfach nutzen
+const tuneCache = new WeakMap<RatedTitle[], Map<string, ReturnType<typeof tuneOptions>>>();
+function tunedFor(r: RatedTitle[], onlyAi: boolean) {
+  let m = tuneCache.get(r);
+  if (!m) { m = new Map(); tuneCache.set(r, m); }
+  const key = onlyAi ? "ai" : "all";
+  if (!m.has(key)) m.set(key, tuneOptions(r, onlyAi ? { skipKinds: NON_AI_KINDS } : {}));
+  return m.get(key)!;
+}
+
 // Bewertet Kandidaten so, wie es die Variante tun würde
-export function rankWith(src: SourceDef, rated: RatedTitle[], catalog: Title[], ai: Map<string, Map<number, AiFeatures>>, cands: Title[]) {
+export function rankWith(src: SourceDef, rated: RatedTitle[], catalog: Title[], ai: Map<string, Map<number, AiFeatures>>, cands: Title[], duel: RatedTitle[] = []) {
   const map = src.model ? ai.get(src.model) : undefined;
   const r = map ? withAi(rated, map) : rated;
   const c = map ? withAi(cands, map) : cands;
   const cat = map ? withAi(catalog, map) : catalog;
-  const { opts } = tuneOptions(r, src.onlyAi ? { skipKinds: NON_AI_KINDS } : {});
+  const { opts } = tunedFor(r, !!src.onlyAi);
   const o: ScoreOptions = { ...opts, interestWeight: src.interest ?? 0, qualityWeight: src.quality ?? opts.qualityWeight, ...src.extra };
-  return recommend(c, buildProfile(r, o, src.interest || src.extra ? cat : undefined), o);
+  const learn = o.duelWeight && duel.length ? [...r, ...duel] : r;
+  return recommend(c, buildProfile(learn, o, src.interest || src.extra ? cat : undefined), o);
 }
 
 // Nachträglicher Test: Wie oft stuft die Variante einen Film, der dir gepasst hat,
@@ -74,4 +91,31 @@ export function duelAuc(ranked: { title: Title; score: number }[], answers: Map<
   let right = 0;
   for (const a of yes) for (const b of no) right += a > b ? 1 : a === b ? 0.5 : 0;
   return { auc: yes.length && no.length ? right / (yes.length * no.length) : null, yes: yes.length, no: no.length };
+}
+
+// Fairer Test für Varianten, die aus Duell-Antworten lernen: Die Antworten werden in 5 Gruppen geteilt.
+// Für jede Gruppe lernt die Variante aus den anderen 4 Gruppen und muss diese Gruppe vorhersagen.
+// Verglichen werden nur Paare innerhalb derselben Gruppe – so wird keine Antwort "abgeschrieben".
+// Varianten ohne Duell-Lernen werden genauso gezählt (gleiche Paare), damit der Vergleich fair ist.
+const FOLDS = 5;
+const foldOf = (id: number) => ((id * 2654435761) >>> 0) % FOLDS;
+export function duelAucCV(src: SourceDef, rated: RatedTitle[], catalog: Title[], ai: Map<string, Map<number, AiFeatures>>, films: Title[], answers: Map<number, boolean>) {
+  const learns = !!src.extra?.duelWeight;
+  const byId = new Map(films.map((t) => [t.id, t]));
+  const once = learns ? null : new Map(rankWith(src, rated, catalog, ai, films).map((r) => [r.title.id, r.score]));
+  let right = 0, pairs = 0, yesN = 0, noN = 0;
+  for (let k = 0; k < FOLDS; k++) {
+    const test = films.filter((t) => foldOf(t.id) === k && answers.has(t.id));
+    if (!test.length) continue;
+    let score = once;
+    if (learns) {
+      const train = new Map([...answers].filter(([id]) => foldOf(id) !== k));
+      score = new Map(rankWith(src, rated, catalog, ai, test, duelEntries(train, byId)).map((r) => [r.title.id, r.score]));
+    }
+    const yes = test.filter((t) => answers.get(t.id) === true).map((t) => score!.get(t.id) ?? -99);
+    const no = test.filter((t) => answers.get(t.id) === false).map((t) => score!.get(t.id) ?? -99);
+    yesN += yes.length; noN += no.length;
+    for (const a of yes) for (const b of no) { right += a > b ? 1 : a === b ? 0.5 : 0; pairs++; }
+  }
+  return { auc: pairs ? right / pairs : null, yes: yesN, no: noN };
 }

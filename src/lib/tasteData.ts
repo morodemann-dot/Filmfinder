@@ -1,3 +1,4 @@
+import { createAdminClient } from "@/lib/supabase/server";
 // Gemeinsames Laden der Daten für Vorschläge und Messtest.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAll, fetchAllParallel } from "./fetchAll";
@@ -109,4 +110,17 @@ export async function loadSnoozed(supabase: SupabaseClient, userId: string): Pro
   const { data, error } = await supabase.from("snoozed").select("title_id").eq("user_id", userId).gt("until", new Date().toISOString());
   if (error) return new Set();
   return new Set((data ?? []).map((r) => r.title_id as number));
+}
+
+// Antworten aus dem Modell-Duell (nur der Server darf die Tabelle lesen). Fehlt die Tabelle: leer.
+export async function loadDuelAnswers(userId: string): Promise<Map<number, boolean>> {
+  const out = new Map<number, boolean>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await createAdminClient().from("ai_duel").select("title_id,answer")
+      .eq("user_id", userId).in("answer", ["passt", "passt_nicht"]).range(from, from + 999);
+    if (error || !data) break;
+    for (const r of data as { title_id: number; answer: string }[]) out.set(r.title_id, r.answer === "passt");
+    if (data.length < 1000) break;
+  }
+  return out;
 }

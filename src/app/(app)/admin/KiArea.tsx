@@ -10,7 +10,7 @@ import { loadAiFeatures, loadTasteData } from "@/lib/tasteData";
 import { compareModels, type ModelResult } from "@/lib/aiCompare";
 import { KIND_NAMES, type FeatureKind } from "@/lib/recommend";
 import { AI_SCALES, type AiScale } from "@/lib/aiFeatures";
-import { DUEL_MODELS, DUEL_SOURCES, EVAL_SOURCES, duelAuc, rankWith } from "@/lib/duel";
+import { DUEL_MODELS, DUEL_SOURCES, EVAL_SOURCES, duelAucCV } from "@/lib/duel";
 import type { Title } from "@/lib/types";
 
 // Reiter "KI": Einschätzungen, Vergleich der Modelle im Messtest und blindes Modell-Duell.
@@ -239,6 +239,8 @@ function RetroBody({ retro }: { retro: Retro[] }) {
                 <p className="caption" style={{ marginTop: 0 }}>
                   Wie oft hätte jede Variante einen Film, der dir gepasst hat ({retro[0].yes}), höher eingestuft als einen, der nicht gepasst hat
                   ({retro[0].no})? 50 % = Raten. So lassen sich auch neue Varianten prüfen, ohne neu zu tindern.
+                  {" "}Fair geteilt: Varianten mit „Duell-Antworten“ lernen immer nur aus 4/5 deiner Antworten und müssen das
+                  übrige Fünftel vorhersagen (fünfmal, bis jede Antwort einmal geprüft wurde).
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 62px", gap: "8px 8px", alignItems: "baseline" }}>
                   {[...retro].sort((a, b) => (b.auc ?? 0) - (a.auc ?? 0)).map((r, i) => (
@@ -273,7 +275,7 @@ async function RetroSection({ userId }: { userId: string }) {
   const films = (data ?? []) as Title[];
   const retro: Retro[] = EVAL_SOURCES
     .filter((src) => !src.model || (ai.get(src.model)?.size ?? 0) > 0)
-    .map((src) => ({ key: src.key, name: src.name, inDuel: DUEL_SOURCES.includes(src), ...duelAuc(rankWith(src, rated, catalog, ai, films), answers) }));
+    .map((src) => ({ key: src.key, name: src.name, inDuel: DUEL_SOURCES.includes(src), ...duelAucCV(src, rated, catalog, ai, films, answers) }));
   return <RetroBody retro={retro} />;
 }
 
