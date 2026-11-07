@@ -10,6 +10,7 @@ import { loadAiFeatures, loadTasteData } from "@/lib/tasteData";
 import { compareModels, type ModelResult } from "@/lib/aiCompare";
 import { KIND_NAMES, type FeatureKind } from "@/lib/recommend";
 import { AI_SCALES, type AiScale } from "@/lib/aiFeatures";
+import { DUEL_MODELS } from "@/lib/duel";
 
 // Reiter "KI": Einschätzungen, Vergleich der Modelle im Messtest und blindes Modell-Duell.
 
@@ -33,7 +34,7 @@ function FeatureTable({ kinds, models, noise, agreement }: {
   return (
     <div style={{ display: "grid", gridTemplateColumns: `minmax(0,1fr) repeat(${models.length + (showAgree ? 1 : 0)}, 54px)`, gap: "7px 8px", alignItems: "baseline" }}>
       <span />
-      {models.map((m) => <span key={m.key} className="eyebrow" style={{ textAlign: "right" }}>{m.name.replace(/ [\d.]+$/, "")}</span>)}
+      {models.map((m) => <span key={m.key} className="eyebrow" style={{ textAlign: "right" }}>{m.short}</span>)}
       {showAgree && <span className="eyebrow" style={{ textAlign: "right" }}>Einig</span>}
       {rows.map(({ k }) => {
         const scale = k.startsWith("ki_") ? (k.slice(3) as AiScale) : null;
@@ -142,7 +143,7 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards }: Props) {
                 <details style={{ marginTop: 14 }}>
                   <summary className="caption" style={{ cursor: "pointer" }}>Übrige Merkmale (Regie, Genres, Besetzung …) ›</summary>
                   <div style={{ marginTop: 10 }}>
-                    <FeatureTable kinds={cmp.otherKinds} models={[base, ...aiModels]} noise={cmp.noise} />
+                    <FeatureTable kinds={cmp.otherKinds} models={[base, ...aiModels.filter((m) => !m.key.endsWith("_ki"))]} noise={cmp.noise} />
                   </div>
                 </details>
                 <p className="caption" style={{ marginBottom: 0 }}>
@@ -159,7 +160,8 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards }: Props) {
       <div className="panel">
         <div className="eyebrow" style={{ marginBottom: 4 }}>3 · Modell-Duell (blind)</div>
         <p className="caption" style={{ marginTop: 0 }}>
-          Jede Variante – ohne KI, Haiku, Sonnet – wählt ihre besten Vorschläge aus Filmen, die du noch nicht kennst.
+          Drei Varianten wählen ihre besten Vorschläge aus Filmen, die du noch nicht bewertet hast: ohne KI (so arbeitet die App jetzt),
+          Haiku mit allen Merkmalen und Haiku nur mit Qualität + KI-Merkmalen. Abwechslungsreich: höchstens ein Film pro Filmreihe, höchstens zwei pro Regie.
           Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
           Diese Antworten fließen <strong>nicht</strong> in dein Geschmacksprofil ein.
         </p>
@@ -167,21 +169,21 @@ export function KiView({ statusRated, statusTest, cmp, duel, cards }: Props) {
           <p className="caption" style={{ margin: 0 }}>Zuerst die <strong>Ergänzung 14</strong> im Supabase SQL Editor ausführen, dann diese Seite neu laden.</p>
         ) : duel.pool === 0 ? (
           <>
-            <p className="small">Schritt 1: Die App wählt 100 Testfilme aus (50, die sie schon jetzt für passend hält, und 50 zufällige solide Filme).</p>
+            <p className="small">Schritt 1: Die App wählt 100 Testfilme aus (50, die sie schon jetzt für passend hält, und 50 zufällige solide Filme – bunt gemischt).</p>
             <PrepareButton />
           </>
         ) : (
           <div style={{ display: "grid", gap: 16 }}>
             <div>
-              <p className="small" style={{ marginTop: 0 }}>Schritt 2: Beide Modelle schätzen die {duel.pool} Testfilme ein.</p>
-              <AiPilot status={statusTest} scope="test" />
+              <p className="small" style={{ marginTop: 0 }}>Schritt 2: Haiku schätzt die {duel.pool} Testfilme ein.</p>
+              <AiPilot status={statusTest} scope="test" models={DUEL_MODELS} />
             </div>
             <div>
               <p className="small" style={{ marginTop: 0 }}>Schritt 3: Blind bewerten.</p>
               {cards.length > 0 ? <DuelDeck cards={cards} /> : (
                 <>
                   <p className="caption">
-                    Jede Variante schlägt 10 Filme vor (doppelte erscheinen nur einmal). Ein Modell macht mit, sobald es deine Filme und fast alle Testfilme eingeschätzt hat.
+                    Jede Variante schlägt 10 Filme vor (doppelte erscheinen nur einmal). Haiku macht mit, sobald es deine Filme und fast alle Testfilme eingeschätzt hat.
                   </p>
                   <RoundButton label={duel.answered ? "Nächste Runde starten" : "Erste Runde starten"} />
                 </>

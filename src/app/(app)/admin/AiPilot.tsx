@@ -10,7 +10,10 @@ const usd = (x: number) => x.toLocaleString("de-DE", { minimumFractionDigits: 2,
 
 // Stufe 2 – Probelauf: die KI schätzt Filme ein (je Modell einmal).
 // scope "rated" = deine bewerteten Filme, "test" = Testfilme fürs Modell-Duell
-export default function AiPilot({ status, scope = "rated", showLink = false }: { status: AiStatus[] | null; scope?: AiScope; showLink?: boolean }) {
+export default function AiPilot({ status: all, scope = "rated", showLink = false, models }: {
+  status: AiStatus[] | null; scope?: AiScope; showLink?: boolean; models?: AiModelKey[];
+}) {
+  const status = all && models ? all.filter((s) => models.includes(s.model)) : all;
   const router = useRouter();
   const [running, setRunning] = useState<AiModelKey | null>(null);
   const [progress, setProgress] = useState<Record<string, number>>({});

@@ -7,10 +7,9 @@ import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabas
 import { fetchAll } from "@/lib/fetchAll";
 import { loadAiFeatures, loadTasteData, withAi } from "@/lib/tasteData";
 import { tuneOptions, MIN_FOR_TEST } from "@/lib/evaluate";
-import { buildProfile, recommend } from "@/lib/recommend";
-import { AI_MODELS, type AiModelKey } from "@/lib/aiFeatures";
+import { buildProfile, diversify, recommend } from "@/lib/recommend";
 import { formatRuntime } from "@/lib/types";
-import { SOURCE_NAMES, type DuelSource } from "@/lib/duel";
+import { DUEL_MODELS, DUEL_SOURCES, NON_AI_KINDS, SOURCE_NAMES, type DuelSource } from "@/lib/duel";
 
 async function requireAdminUser() {
   const user = await getUser();
@@ -30,7 +29,8 @@ async function duelRows(userId: string) {
 }
 
 // 1) Testfilme auswählen: 50 Filme, die die App ohne KI am höchsten einstuft, + 50 zufällige solide Filme.
-//    Nur Filme, die du noch nicht eingeordnet hast.
+//    Nur Filme, die du noch nicht eingeordnet hast – und abwechslungsreich: höchstens ein Film pro
+//    Filmreihe (also nicht alle Star-Wars- oder MCU-Filme) und höchstens zwei pro Regie.
 export async function duelPreparePool(): Promise<{ added: number; error?: string }> {
   try {
     const user = await requireAdminUser();
@@ -39,10 +39,12 @@ export async function duelPreparePool(): Promise<{ added: number; error?: string
     const skip = new Set([...rated.map((r) => r.id), ...existing.map((r) => r.title_id)]);
     const free = catalog.filter((t) => !skip.has(t.id));
     const { opts } = tuneOptions(rated);
-    const top = recommend(free, buildProfile(rated, opts), opts).slice(0, POOL_SIZE / 2).map((r) => r.title.id);
-    const rest = free.filter((t) => !top.includes(t.id) && (t.vote_count ?? 0) >= 500);
+    // Bereits vorhandene Testfilme zählen bei der Vielfalt mit
+    const already = catalog.filter((t) => existing.some((r) => r.title_id === t.id));
+    const top = diversify(recommend(free, buildProfile(rated, opts), opts).map((r) => r.title), POOL_SIZE / 2, already);
+    const rest = free.filter((t) => !top.includes(t) && (t.vote_count ?? 0) >= 500);
     for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
-    const ids = [...top, ...rest.slice(0, POOL_SIZE - top.length).map((t) => t.id)];
+    const ids = [...top, ...diversify(rest, POOL_SIZE - top.length, [...already, ...top])].map((t) => t.id);
     if (!ids.length) return { added: 0 };
     const { error } = await createAdminClient().from("ai_duel").insert(ids.map((title_id) => ({ user_id: user.id, title_id })));
     if (error) return { added: 0, error: error.message + " (wurde die Ergänzung 14 im SQL Editor ausgeführt?)" };
@@ -64,24 +66,27 @@ export async function duelStartRound(): Promise<{ cards: number; sources: DuelSo
     const { data: films } = await supabase.from("titles").select("*").in("id", open);
     const pool = (films ?? []) as import("@/lib/types").Title[];
 
-    const models = (Object.keys(AI_MODELS) as AiModelKey[]).filter((m) => {
+    const models = DUEL_MODELS.filter((m) => {
       const map = ai.get(m);
       const ratedCovered = map ? rated.filter((r) => r.rating && map.has(r.id)).length : 0;
       const poolCovered = map ? pool.filter((t) => map.has(t.id)).length : 0;
       return ratedCovered >= MIN_FOR_TEST && poolCovered >= pool.length * 0.8;
     });
     const fair = pool.filter((t) => models.every((m) => ai.get(m)!.has(t.id)));
-    const sources: DuelSource[] = ["ohne", ...models];
+    const active = DUEL_SOURCES.filter((s) => !s.model || models.includes(s.model));
+    const sources: DuelSource[] = active.map((s) => s.key);
 
     const picks = new Map<number, Set<DuelSource>>();
-    for (const src of sources) {
-      const map = src === "ohne" ? undefined : ai.get(src);
-      const r = src === "ohne" ? rated : withAi(rated, map);
-      const cands = src === "ohne" ? fair : withAi(fair, map);
-      const { opts } = tuneOptions(r);
-      for (const rec of recommend(cands, buildProfile(r, opts), opts).slice(0, PICKS_PER_ROUND)) {
-        if (!picks.has(rec.title.id)) picks.set(rec.title.id, new Set());
-        picks.get(rec.title.id)!.add(src);
+    for (const src of active) {
+      const map = src.model ? ai.get(src.model) : undefined;
+      const r = map ? withAi(rated, map) : rated;
+      const cands = map ? withAi(fair, map) : fair;
+      const { opts } = tuneOptions(r, src.onlyAi ? { skipKinds: NON_AI_KINDS } : {});
+      // Jede Quelle wählt abwechslungsreich: max. 1 Film pro Filmreihe, max. 2 pro Regie
+      const best = diversify(recommend(cands, buildProfile(r, opts), opts).map((x) => x.title), PICKS_PER_ROUND);
+      for (const t of best) {
+        if (!picks.has(t.id)) picks.set(t.id, new Set());
+        picks.get(t.id)!.add(src.key);
       }
     }
     const admin = createAdminClient();

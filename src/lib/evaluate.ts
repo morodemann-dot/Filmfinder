@@ -54,13 +54,13 @@ export function kindImpacts(rated: RatedTitle[], kinds: FeatureKind[], base: Eva
 // Bei Gleichstand gewinnt die vorsichtigere (weniger Geschmack, mehr Vorsicht).
 const TASTE_STEPS = [0, 0.5, 1, 1.5, 2.5];
 const SHRINK_STEPS = [2, 6];
-export function tuneOptions(rated: RatedTitle[]) {
+export function tuneOptions(rated: RatedTitle[], extra: Pick<ScoreOptions, "skipKinds"> = {}) {
   const count = rated.filter((r) => r.status === "gesehen" && r.rating).length;
-  if (count < MIN_FOR_TEST) return { opts: { ...DEFAULT_OPTIONS }, result: null };
-  let best = { opts: { ...DEFAULT_OPTIONS }, result: evaluate(rated, DEFAULT_OPTIONS) };
+  if (count < MIN_FOR_TEST) return { opts: { ...DEFAULT_OPTIONS, ...extra } as ScoreOptions, result: null };
+  let best: { opts: ScoreOptions; result: EvalResult } = { opts: { ...DEFAULT_OPTIONS, ...extra }, result: evaluate(rated, { ...DEFAULT_OPTIONS, ...extra }) };
   for (const tasteWeight of TASTE_STEPS) {
     for (const shrink of SHRINK_STEPS) {
-      const opts = { qualityWeight: 1, tasteWeight, shrink };
+      const opts: ScoreOptions = { qualityWeight: 1, tasteWeight, shrink, ...extra };
       const result = evaluate(rated, opts);
       if (result.accuracy > best.result.accuracy + 0.002) best = { opts, result };
     }

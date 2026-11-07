@@ -274,3 +274,21 @@ export function topPreferences(prefs: Map<string, Preference>, count = 6) {
     .slice(0, count)
     .filter((p) => p.pref > 0.05);
 }
+
+// Vielfalt: nimmt die besten Titel, aber höchstens einen pro Filmreihe und höchstens zwei pro Regie.
+// "taken" = schon gewählte Filme (zählen mit, z. B. aus einem anderen Teil der Auswahl)
+export function diversify<T extends Title>(sorted: T[], n: number, taken: Title[] = []): T[] {
+  const coll = new Set(taken.map((t) => t.collection_id).filter(Boolean));
+  const dirs = new Map<string, number>();
+  for (const t of taken) for (const d of t.directors ?? []) dirs.set(d, (dirs.get(d) ?? 0) + 1);
+  const out: T[] = [];
+  for (const t of sorted) {
+    if (out.length >= n) break;
+    if (t.collection_id && coll.has(t.collection_id)) continue;
+    if ((t.directors ?? []).some((d) => (dirs.get(d) ?? 0) >= 2)) continue;
+    out.push(t);
+    if (t.collection_id) coll.add(t.collection_id);
+    for (const d of t.directors ?? []) dirs.set(d, (dirs.get(d) ?? 0) + 1);
+  }
+  return out;
+}

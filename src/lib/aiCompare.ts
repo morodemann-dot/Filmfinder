@@ -5,8 +5,10 @@ import { AI_MODELS, AI_SCALES, type AiFeatures, type AiModelKey, type AiScale } 
 import { withAi } from "./tasteData";
 
 export type ModelResult = {
-  key: "ohne" | AiModelKey;
+  key: string; // "ohne", "haiku", "haiku_ki" …
   name: string;
+  short: string; // kurzer Spaltenname
+  model?: AiModelKey;
   covered: number; // eingeschätzte Filme unter deinen bewerteten
   accuracy: number; // Treffsicherheit gesamt
   tasteOnly: number; // nur persönlicher Geschmack
@@ -20,18 +22,24 @@ export function compareModels(rated: RatedTitle[], ai: Map<string, Map<number, A
   if (count < MIN_FOR_TEST) return null;
   const allKinds = Object.keys(KIND_NAMES) as FeatureKind[];
 
-  const run = (key: ModelResult["key"], name: string, r: RatedTitle[], covered: number): ModelResult => {
-    const t = tuneOptions(r);
+  const otherKinds = allKinds.filter((k) => !k.startsWith("ki_"));
+  const run = (key: string, name: string, short: string, r: RatedTitle[], covered: number, onlyAi = false, model?: AiModelKey): ModelResult => {
+    const extra = onlyAi ? { skipKinds: otherKinds } : {};
+    const t = tuneOptions(r, extra);
     const probe = { ...t.opts, tasteWeight: t.opts.tasteWeight || 1 };
-    const deltas = new Map(kindImpacts(r, allKinds, evaluate(r, probe), probe).map((x) => [x.kind, x.delta]));
-    return { key, name, covered, accuracy: t.result!.accuracy, tasteOnly: evaluate(r, { ...probe, qualityWeight: 0 }).accuracy, deltas };
+    const kinds = onlyAi ? allKinds.filter((k) => k.startsWith("ki_")) : allKinds;
+    const deltas = new Map(kindImpacts(r, kinds, evaluate(r, probe), probe).map((x) => [x.kind, x.delta]));
+    return { key, name, short, model, covered, accuracy: t.result!.accuracy, tasteOnly: evaluate(r, { ...probe, qualityWeight: 0 }).accuracy, deltas };
   };
 
-  const results: ModelResult[] = [run("ohne", "Ohne KI", rated, 0)];
+  const results: ModelResult[] = [run("ohne", "Ohne KI", "Ohne", rated, 0)];
   for (const m of Object.keys(AI_MODELS) as AiModelKey[]) {
     const map = ai.get(m);
     const covered = map ? rated.filter((r) => r.rating && map.has(r.id)).length : 0;
-    if (covered >= MIN_FOR_TEST) results.push(run(m, AI_MODELS[m].name, withAi(rated, map), covered));
+    if (covered < MIN_FOR_TEST) continue;
+    const short = AI_MODELS[m].name.replace(/ [\d.]+$/, "");
+    results.push(run(m, `${AI_MODELS[m].name} · alle Merkmale`, short, withAi(rated, map), covered, false, m));
+    results.push(run(`${m}_ki`, `${AI_MODELS[m].name} · Qualität + nur KI`, `${short} KI`, withAi(rated, map), covered, true, m));
   }
 
   // Wie oft sind sich Haiku und Sonnet einig? (gleiche Stufe wenig/mittel/viel)
@@ -46,5 +54,5 @@ export function compareModels(rated: RatedTitle[], ai: Map<string, Map<number, A
     }
   }
   const noise = count < 60 ? 0.01 : 0.005;
-  return { count, noise, results, agreement, aiKinds: AI_KINDS, otherKinds: allKinds.filter((k) => !k.startsWith("ki_")) };
+  return { count, noise, results, agreement, aiKinds: AI_KINDS, otherKinds };
 }

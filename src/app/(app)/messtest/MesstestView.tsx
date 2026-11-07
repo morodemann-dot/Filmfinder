@@ -90,7 +90,7 @@ export default function MesstestView({ rated, variants = [] }: { rated: RatedTit
         <p className="caption" style={{ marginBottom: 0 }}>
           {tuned.opts.tasteWeight === 0
             ? "Bei deinen bisherigen Bewertungen bringt der persönliche Geschmack noch keinen Gewinn über die allgemeine Qualität hinaus. Die App setzt deshalb gerade vor allem auf Qualität – das ändert sich automatisch, sobald deine Bewertungen ein eigenes Muster zeigen."
-            : `Die App hat für dich die treffsicherste Mischung gewählt: Geschmacks-Anteil ${tuned.opts.tasteWeight.toLocaleString("de-DE")}${tuned.opts.shrink > 2 ? ", mit extra Vorsicht bei wenigen Belegen" : ""}. Wird bei jedem Aufruf neu berechnet.`}
+            : `Die App hat für dich die treffsicherste Mischung gewählt: Geschmacks-Anteil ${(tuned.opts.tasteWeight ?? 1).toLocaleString("de-DE")}${(tuned.opts.shrink ?? 2) > 2 ? ", mit extra Vorsicht bei wenigen Belegen" : ""}. Wird bei jedem Aufruf neu berechnet.`}
         </p>
       </div>
 
