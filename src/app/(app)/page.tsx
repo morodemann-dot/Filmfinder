@@ -5,7 +5,7 @@ import PickDeck, { type Pick } from "@/components/PickDeck";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { loadTasteData } from "@/lib/tasteData";
 import { tuneOptions } from "@/lib/evaluate";
-import { buildProfile, recommend, topPreferences, type Recommendation } from "@/lib/recommend";
+import { buildProfile, pickDiverse, recommend, SUGGEST_FROM_YEAR, topInterests, topPreferences, type Recommendation } from "@/lib/recommend";
 import { MOODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
 import { formatRuntime } from "@/lib/types";
 
@@ -43,7 +43,8 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const seen = new Set(rated.map((r) => r.id));
   // Persönliche Mischung aus Qualität und Geschmack – per Messtest an deinen Bewertungen gewählt
   const { opts } = tuneOptions(rated);
-  const profile = buildProfile(rated, opts);
+  // Mit Katalog: lernt auch, welche ART von Filmen du schaust (Interesse)
+  const profile = buildProfile(rated, opts, catalog);
   const { prefs, ratedCount } = profile;
 
   if (ratedCount < MIN_RATINGS) {
@@ -68,19 +69,22 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const pops = catalog.map((t) => t.popularity ?? 0).sort((a, b) => a - b);
   const medianPop = pops[Math.floor(pops.length / 2)] ?? 0;
   const candidates = catalog.filter(
-    (t) => !seen.has(t.id) && (!mood || matchesMood(t, mood)) && matchesTime(t, time) &&
+    (t) => !seen.has(t.id) && (t.release_year ?? 0) >= SUGGEST_FROM_YEAR && (!mood || matchesMood(t, mood)) && matchesTime(t, time) &&
       (!surprise || (t.popularity ?? 0) < medianPop),
   );
   const recs = recommend(candidates, profile, opts).filter((r) => r.score > 0 && r.reasons.length > 0);
   const DECK = 25; // so viele Vorschläge liegen im Stapel
-  const picks: Pick[] = recs.slice(0, DECK).map((r) => ({
+  // Abwechslung: weitere Filme derselben Reihe/Regie bekommen einen kleinen Abzug
+  const diverse = pickDiverse(recs, DECK + 12);
+  const picks: Pick[] = diverse.slice(0, DECK).map((r) => ({
     id: r.title.id,
     title: r.title.title,
     poster_path: r.title.poster_path,
     meta: [r.title.release_year, formatRuntime(r.title.runtime_seconds), r.title.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · "),
     reasons: r.reasons,
   }));
-  const more = recs.slice(DECK, DECK + 12);
+  const more = diverse.slice(DECK, DECK + 12);
+  const interests = topInterests(profile.interest, 8);
   const learned = topPreferences(prefs, 8);
 
   return (
@@ -145,6 +149,16 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
             </span>
           ))}
         </div>
+        {interests.length > 0 && (
+          <>
+            <div className="eyebrow" style={{ margin: "14px 0 8px" }}>Was du besonders oft schaust</div>
+            <div className="tags" style={{ marginBottom: 0 }}>
+              {interests.map((x) => (
+                <span key={x.key} className="tag">{x.label} · {Math.round(x.share * 100)} % (sonst {Math.round(x.catShare * 100)} %)</span>
+              ))}
+            </div>
+          </>
+        )}
         <Link href="/messtest" className="btn" style={{ marginTop: 14 }}>Wie treffsicher sind die Vorschläge? Messtest ›</Link>
       </details>
     </>

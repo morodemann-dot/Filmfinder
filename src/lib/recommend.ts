@@ -73,13 +73,18 @@ export function qualityOf(t: Title): number | null {
   return q - QUALITY_PRIOR; // ca. −2 bis +2
 }
 
+// Vorschläge erst ab diesem Erscheinungsjahr (Katalog bleibt unverändert)
+export const SUGGEST_FROM_YEAR = 1990;
+
 export type ScoreOptions = {
+  interestWeight?: number; // wie stark zählt, welche ART von Filmen du schaust (0 = aus)
   qualityWeight?: number; // 1 = so stark, wie es zu deinen Bewertungen passt; 0 = ignorieren
   tasteWeight?: number; // wie stark dein persönlicher Geschmack zählt (wird per Messtest gewählt)
   shrink?: number; // Vorsicht bei wenigen Belegen (mehr = vorsichtiger)
   skipKinds?: FeatureKind[]; // Merkmalsarten weglassen (nur für den Messtest)
 };
-export const DEFAULT_OPTIONS: Required<Omit<ScoreOptions, "skipKinds">> = { qualityWeight: 1, tasteWeight: 1, shrink: 2 }; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
+export const DEFAULT_OPTIONS: Required<Omit<ScoreOptions, "skipKinds" | "interestWeight">> = { qualityWeight: 1, tasteWeight: 1, shrink: 2 };
+export const DEFAULT_INTEREST = 1; // "Vorsicht": so viele gedachte neutrale Beobachtungen kommen immer dazu
 
 type Feature = { key: string; kind: FeatureKind; label: string };
 
@@ -157,7 +162,53 @@ function fitQuality(withRating: RatedTitle[], mean: number) {
 
 export type Profile = ReturnType<typeof buildProfile>;
 
-export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}) {
+// ---------------- Interesse: Welche ART von Filmen schaust du? ----------------
+// Vergleicht deine Filme (gesehen + Merkliste) mit dem ganzen Katalog.
+// Beispiel: 28 % deiner Filme sind Science-Fiction, im Katalog nur 9 % → klares Plus.
+// Ein Musical-Klassiker mit TMDB 8,2 rutscht dagegen nach unten, wenn du nie Musicals schaust.
+export type Interest = { key: string; kind: FeatureKind; label: string; lift: number; mine: number; expected: number; share: number; catShare: number };
+const PSEUDO = 3; // Vorsicht bei kleinen Zahlen
+
+export function buildInterest(rated: RatedTitle[], catalog: Title[]) {
+  const catCount = new Map<string, number>();
+  for (const t of catalog) for (const f of new Set(featuresOf(t).map((x) => x.key))) catCount.set(f, (catCount.get(f) ?? 0) + 1);
+  // KI-Merkmale gibt es nur für einen Teil der Filme → dort nur mit eingeschätzten Filmen vergleichen
+  const catAi = Math.max(1, catalog.filter((t) => t.ai).length);
+  const mine = new Map<string, { f: Feature; n: number }>();
+  let total = 0, totalAi = 0;
+  for (const r of rated) {
+    const w = r.status === "gesehen" ? 1 : r.status === "merkliste" ? 0.5 : r.status === "nicht_interessiert" ? -0.7 : 0;
+    if (!w) continue;
+    if (w > 0) { total += w; if (r.ai) totalAi += w; }
+    const seen = new Set<string>();
+    for (const f of featuresOf(r)) {
+      if (seen.has(f.key)) continue;
+      seen.add(f.key);
+      const a = mine.get(f.key) ?? { f, n: 0 };
+      a.n += w;
+      mine.set(f.key, a);
+    }
+  }
+  const N = Math.max(1, catalog.length);
+  const out = new Map<string, Interest>();
+  const allKeys = new Set([...catCount.keys(), ...mine.keys()]);
+  for (const key of allKeys) {
+    const c = catCount.get(key) ?? 0;
+    const m = mine.get(key);
+    const isAi = key.startsWith("ki_");
+    const expected = isAi ? totalAi * (c / catAi) : total * (c / N); // so oft wäre das Merkmal bei dir "zufällig" zu erwarten
+    const n = Math.max(0, m?.n ?? 0);
+    const lift = Math.log((n + PSEUDO) / (expected + PSEUDO));
+    const f = m?.f ?? null;
+    out.set(key, {
+      key, kind: (f?.kind ?? key.split(":")[0]) as FeatureKind, label: f?.label ?? key.split(":").slice(1).join(":"),
+      lift, mine: n, expected, share: (isAi ? totalAi : total) ? n / (isAi ? totalAi : total) : 0, catShare: c / (isAi ? catAi : N),
+    });
+  }
+  return out;
+}
+
+export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catalog?: Title[]) {
   const shrink = opts.shrink ?? DEFAULT_OPTIONS.shrink;
   const withRating = rated.filter((r) => r.status === "gesehen" && r.rating);
   const mean = withRating.reduce((s, r) => s + r.rating!, 0) / Math.max(1, withRating.length);
@@ -195,7 +246,8 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}) {
       avgScore: a.n ? a.sumR / a.n : null,
     });
   }
-  return { prefs, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
+  const interest = catalog?.length ? buildInterest(rated, catalog) : null;
+  return { prefs, interest, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -223,8 +275,16 @@ function reasonText(p: Preference) {
   return `${head} (${evidence})`;
 }
 
+const INTEREST_REASON_KINDS = new Set<FeatureKind>(["genre", "subgenre", "regie", "reihe", "thema", "besetzung", "vorlage", ...AI_KINDS]);
+
+function interestText(it: Interest) {
+  const head = KIND_LABEL[it.kind] ? `${KIND_LABEL[it.kind]}: ${it.label}` : it.label;
+  return `Typisch für dich – ${head} (${Math.round(it.share * 100)} % deiner Filme, im Katalog ${Math.round(it.catShare * 100)} %)`;
+}
+
 export function recommend(candidates: Title[], profile: Profile, opts: ScoreOptions = {}): Recommendation[] {
   const { prefs } = profile;
+  const iw = opts.interestWeight ?? DEFAULT_INTEREST;
   const qw = (opts.qualityWeight ?? DEFAULT_OPTIONS.qualityWeight) * profile.qualitySlope;
   const tw = opts.tasteWeight ?? DEFAULT_OPTIONS.tasteWeight;
   const skip = new Set(opts.skipKinds ?? []);
@@ -251,6 +311,21 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
     }
     const q = qualityOf(t);
     if (q != null) score += qw * (q - profile.qMean);
+
+    // Interesse: passt die ART des Films zu dem, was du schaust?
+    let topInterest: Interest | null = null;
+    if (profile.interest && iw) {
+      const byKindI = new Map<FeatureKind, Interest[]>();
+      for (const f of feats) {
+        const it = profile.interest.get(f.key);
+        if (it) byKindI.set(f.kind, [...(byKindI.get(f.kind) ?? []), it]);
+      }
+      for (const [kind, its] of byKindI) {
+        score += iw * KIND_WEIGHT[kind] * (its.reduce((s, x) => s + x.lift, 0) / its.length);
+        for (const it of its)
+          if (INTEREST_REASON_KINDS.has(kind) && it.lift > 0.4 && it.mine >= 3 && (!topInterest || it.lift * KIND_WEIGHT[kind] > topInterest.lift * KIND_WEIGHT[topInterest.kind])) topInterest = it;
+      }
+    }
     // Ganz leichter Bonus für bekannte Filme, nur als Gleichstand-Entscheider
     score += Math.log10(1 + (t.popularity ?? 0)) * 0.02;
 
@@ -259,6 +334,7 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
       .sort((a, b) => b.c - a.c)
       .slice(0, 3)
       .map((x) => reasonText(x.p));
+    if (topInterest && reasons.length < 3) reasons.unshift(interestText(topInterest));
     if (q != null && q >= 0.8 && qw >= 0.3 && reasons.length < 3)
       reasons.push(`Allgemein sehr gut bewertet (TMDB ${t.vote_average!.toLocaleString("de-DE", { maximumFractionDigits: 1 })})`);
     out.push({ title: t, score, reasons, coverage: known / feats.length });
@@ -275,20 +351,56 @@ export function topPreferences(prefs: Map<string, Preference>, count = 6) {
     .filter((p) => p.pref > 0.05);
 }
 
-// Vielfalt: nimmt die besten Titel, aber höchstens einen pro Filmreihe und höchstens zwei pro Regie.
-// "taken" = schon gewählte Filme (zählen mit, z. B. aus einem anderen Teil der Auswahl)
-export function diversify<T extends Title>(sorted: T[], n: number, taken: Title[] = []): T[] {
-  const coll = new Set(taken.map((t) => t.collection_id).filter(Boolean));
+// Vielfalt (hart, für zufällige Auswahl ohne Punkte): höchstens maxColl Filme pro Filmreihe, maxDir pro Regie.
+export function diversify<T extends Title>(sorted: T[], n: number, taken: Title[] = [], maxColl = 2, maxDir = 3): T[] {
+  const coll = new Map<number, number>();
   const dirs = new Map<string, number>();
-  for (const t of taken) for (const d of t.directors ?? []) dirs.set(d, (dirs.get(d) ?? 0) + 1);
+  const count = (t: Title) => {
+    if (t.collection_id) coll.set(t.collection_id, (coll.get(t.collection_id) ?? 0) + 1);
+    for (const d of t.directors ?? []) dirs.set(d, (dirs.get(d) ?? 0) + 1);
+  };
+  taken.forEach(count);
   const out: T[] = [];
   for (const t of sorted) {
     if (out.length >= n) break;
-    if (t.collection_id && coll.has(t.collection_id)) continue;
-    if ((t.directors ?? []).some((d) => (dirs.get(d) ?? 0) >= 2)) continue;
+    if (t.collection_id && (coll.get(t.collection_id) ?? 0) >= maxColl) continue;
+    if ((t.directors ?? []).some((d) => (dirs.get(d) ?? 0) >= maxDir)) continue;
     out.push(t);
-    if (t.collection_id) coll.add(t.collection_id);
-    for (const d of t.directors ?? []) dirs.set(d, (dirs.get(d) ?? 0) + 1);
+    count(t);
   }
   return out;
+}
+
+// Vielfalt (weich, für Vorschläge): Jeder weitere Film derselben Filmreihe bzw. derselben Regie
+// bekommt einen kleinen Abzug. Passen drei MCU-Filme wirklich deutlich besser als alles andere,
+// dürfen sie trotzdem alle kommen – sonst rückt Abwechslung nach.
+export function pickDiverse(recs: Recommendation[], n: number): Recommendation[] {
+  const pool = recs.slice(0, Math.max(n * 8, 60));
+  const coll = new Map<number, number>();
+  const dirs = new Map<string, number>();
+  const out: Recommendation[] = [];
+  while (out.length < n && pool.length) {
+    let bi = 0, bv = -Infinity;
+    for (let i = 0; i < pool.length; i++) {
+      const t = pool[i].title;
+      const c = t.collection_id ? coll.get(t.collection_id) ?? 0 : 0;
+      const d = Math.max(0, ...(t.directors ?? []).map((x) => dirs.get(x) ?? 0));
+      const v = pool[i].score - 0.35 * c - 0.15 * d;
+      if (v > bv) { bv = v; bi = i; }
+    }
+    const [r] = pool.splice(bi, 1);
+    out.push(r);
+    if (r.title.collection_id) coll.set(r.title.collection_id, (coll.get(r.title.collection_id) ?? 0) + 1);
+    for (const x of r.title.directors ?? []) dirs.set(x, (dirs.get(x) ?? 0) + 1);
+  }
+  return out;
+}
+
+// Die stärksten Interessen (für "Was die App über dich gelernt hat")
+export function topInterests(interest: Map<string, Interest> | null, count = 8) {
+  if (!interest) return [];
+  return [...interest.values()]
+    .filter((x) => INTEREST_REASON_KINDS.has(x.kind) && x.kind !== "besetzung" && x.mine >= 4 && x.lift > 0.3)
+    .sort((a, b) => b.lift * KIND_WEIGHT[b.kind] - a.lift * KIND_WEIGHT[a.kind])
+    .slice(0, count);
 }

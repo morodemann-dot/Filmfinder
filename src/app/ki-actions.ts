@@ -5,11 +5,11 @@
 
 import { createAdminClient, createClient, getUser, isAdmin } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/fetchAll";
-import { loadAiFeatures, loadTasteData, withAi } from "@/lib/tasteData";
-import { tuneOptions, MIN_FOR_TEST } from "@/lib/evaluate";
-import { buildProfile, diversify, recommend } from "@/lib/recommend";
+import { loadAiFeatures, loadTasteData } from "@/lib/tasteData";
+import { MIN_FOR_TEST } from "@/lib/evaluate";
+import { diversify, pickDiverse, SUGGEST_FROM_YEAR } from "@/lib/recommend";
 import { formatRuntime } from "@/lib/types";
-import { DUEL_MODELS, DUEL_SOURCES, NON_AI_KINDS, SOURCE_NAMES, type DuelSource } from "@/lib/duel";
+import { ALL_SOURCES, DUEL_MODELS, DUEL_SOURCES, rankWith } from "@/lib/duel";
 
 async function requireAdminUser() {
   const user = await getUser();
@@ -28,20 +28,18 @@ async function duelRows(userId: string) {
   );
 }
 
-// 1) Testfilme auswählen: 50 Filme, die die App ohne KI am höchsten einstuft, + 50 zufällige solide Filme.
-//    Nur Filme, die du noch nicht eingeordnet hast – und abwechslungsreich: höchstens ein Film pro
-//    Filmreihe (also nicht alle Star-Wars- oder MCU-Filme) und höchstens zwei pro Regie.
+// 1) Testfilme auswählen: 50 Filme, die die neue App (mit Interesse) am höchsten einstuft, + 50 zufällige
+//    solide Filme. Nur Filme ab 1990, die du noch nicht eingeordnet hast; max. 2 pro Filmreihe, 3 pro Regie.
 export async function duelPreparePool(): Promise<{ added: number; error?: string }> {
   try {
     const user = await requireAdminUser();
     const supabase = await createClient();
     const [{ rated, catalog }, existing] = await Promise.all([loadTasteData(supabase, user.id), duelRows(user.id)]);
     const skip = new Set([...rated.map((r) => r.id), ...existing.map((r) => r.title_id)]);
-    const free = catalog.filter((t) => !skip.has(t.id));
-    const { opts } = tuneOptions(rated);
+    const free = catalog.filter((t) => !skip.has(t.id) && (t.release_year ?? 0) >= SUGGEST_FROM_YEAR);
     // Bereits vorhandene Testfilme zählen bei der Vielfalt mit
     const already = catalog.filter((t) => existing.some((r) => r.title_id === t.id));
-    const top = diversify(recommend(free, buildProfile(rated, opts), opts).map((r) => r.title), POOL_SIZE / 2, already);
+    const top = diversify(rankWith(DUEL_SOURCES[1], rated, catalog, new Map(), free).map((r) => r.title), POOL_SIZE / 2, already);
     const rest = free.filter((t) => !top.includes(t) && (t.vote_count ?? 0) >= 500);
     for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
     const ids = [...top, ...diversify(rest, POOL_SIZE - top.length, [...already, ...top])].map((t) => t.id);
@@ -54,17 +52,17 @@ export async function duelPreparePool(): Promise<{ added: number; error?: string
   }
 }
 
-// 2) Neue Runde: jede Quelle wählt ihre 10 besten noch offenen Testfilme (fair: nur Filme,
-//    die alle beteiligten KI-Modelle eingeschätzt haben).
-export async function duelStartRound(): Promise<{ cards: number; sources: DuelSource[]; error?: string }> {
+// 2) Neue Runde: jede Variante wählt ihre 10 besten noch offenen Testfilme (ab 1990, abwechslungsreich;
+//    fair: nur Filme, die alle beteiligten KI-Modelle eingeschätzt haben).
+export async function duelStartRound(): Promise<{ cards: number; sources: string[]; error?: string }> {
   try {
     const user = await requireAdminUser();
     const supabase = await createClient();
-    const [{ rated }, rows, ai] = await Promise.all([loadTasteData(supabase, user.id, false), duelRows(user.id), loadAiFeatures(supabase)]);
+    const [{ rated, catalog }, rows, ai] = await Promise.all([loadTasteData(supabase, user.id), duelRows(user.id), loadAiFeatures(supabase)]);
     const open = rows.filter((r) => !r.answer).map((r) => r.title_id);
     if (!open.length) return { cards: 0, sources: [] };
     const { data: films } = await supabase.from("titles").select("*").in("id", open);
-    const pool = (films ?? []) as import("@/lib/types").Title[];
+    const pool = ((films ?? []) as import("@/lib/types").Title[]).filter((t) => (t.release_year ?? 0) >= SUGGEST_FROM_YEAR);
 
     const models = DUEL_MODELS.filter((m) => {
       const map = ai.get(m);
@@ -74,17 +72,13 @@ export async function duelStartRound(): Promise<{ cards: number; sources: DuelSo
     });
     const fair = pool.filter((t) => models.every((m) => ai.get(m)!.has(t.id)));
     const active = DUEL_SOURCES.filter((s) => !s.model || models.includes(s.model));
-    const sources: DuelSource[] = active.map((s) => s.key);
+    const sources = active.map((s) => s.key);
 
-    const picks = new Map<number, Set<DuelSource>>();
+    const picks = new Map<number, Set<string>>();
     for (const src of active) {
-      const map = src.model ? ai.get(src.model) : undefined;
-      const r = map ? withAi(rated, map) : rated;
-      const cands = map ? withAi(fair, map) : fair;
-      const { opts } = tuneOptions(r, src.onlyAi ? { skipKinds: NON_AI_KINDS } : {});
-      // Jede Quelle wählt abwechslungsreich: max. 1 Film pro Filmreihe, max. 2 pro Regie
-      const best = diversify(recommend(cands, buildProfile(r, opts), opts).map((x) => x.title), PICKS_PER_ROUND);
-      for (const t of best) {
+      // Abwechslung: weitere Filme derselben Reihe/Regie bekommen einen kleinen Abzug
+      const best = pickDiverse(rankWith(src, rated, catalog, ai, fair), PICKS_PER_ROUND);
+      for (const { title: t } of best) {
         if (!picks.has(t.id)) picks.set(t.id, new Set());
         picks.get(t.id)!.add(src.key);
       }
@@ -128,18 +122,25 @@ export async function duelAnswer(titleId: number, answer: "passt" | "passt_nicht
   if (error) throw new Error(error.message);
 }
 
-export type DuelResult = { source: DuelSource; name: string; passt: number; nicht: number; gesehen: number; offen: number };
+export type DuelResult = { source: string; name: string; passt: number; nicht: number; gesehen: number; offen: number };
+
+// Beantwortete Testfilme (für den nachträglichen Test)
+export async function duelAnswers(): Promise<Map<number, boolean>> {
+  const user = await requireAdminUser();
+  const rows = await duelRows(user.id).catch(() => []);
+  return new Map(rows.filter((r) => r.answer === "passt" || r.answer === "passt_nicht").map((r) => [r.title_id, r.answer === "passt"]));
+}
 
 // 4) Auswertung: Wie viele Vorschläge jeder Quelle haben gepasst?
 export async function duelResults(): Promise<{ pool: number; answered: number; results: DuelResult[] } | null> {
   const user = await requireAdminUser();
   const rows = await duelRows(user.id).catch(() => null);
   if (!rows) return null;
-  const results = (Object.keys(SOURCE_NAMES) as DuelSource[]).map((source) => {
+  const results = ALL_SOURCES.map(({ key: source, name }) => {
     const mine = rows.filter((r) => r.picked_by.includes(source));
     return {
       source,
-      name: SOURCE_NAMES[source],
+      name,
       passt: mine.filter((r) => r.answer === "passt").length,
       nicht: mine.filter((r) => r.answer === "passt_nicht").length,
       gesehen: mine.filter((r) => r.answer === "gesehen").length,
