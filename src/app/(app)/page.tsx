@@ -4,6 +4,8 @@ import { MIN_RATINGS } from "@/lib/onboarding";
 import PickDeck, { type Pick } from "@/components/PickDeck";
 import SurpriseMe, { type Surprise } from "@/components/SurpriseMe";
 import FinderFilters, { type FinderFilter } from "@/components/FinderFilters";
+import LikeThis from "@/components/LikeThis";
+import { buildNet, netNeighbors, sharedFeatures } from "@/lib/filmNet";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { loadDuelAnswers, loadSnoozed, loadTasteData } from "@/lib/tasteData";
 import { tuneOptions } from "@/lib/evaluate";
@@ -19,7 +21,7 @@ import { formatRuntime, type Title } from "@/lib/types";
 // Startseite "Filmfinder": Filter oben (Auswahlmenüs), darunter der Kartenstapel mit den besten Vorschlägen
 // und persönliche Reihen ("Weil du X mochtest", Geheimtipps, Merkliste).
 
-type SP = { stimmung?: string; zeit?: string; modus?: string; genre?: string; zeitraum?: string; mit?: string };
+type SP = { stimmung?: string; zeit?: string; modus?: string; genre?: string; zeitraum?: string; mit?: string; wie?: string };
 
 function Tile({ t, caption }: { t: Title; caption?: string }) {
   return (
@@ -151,15 +153,50 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
       })
       .sort((a, b) => b.score - a.score);
   }
+  // "Etwas wie …": Filme, die im Filmnetz nah an den Vorbildern liegen (direkt oder über einen Zwischenfilm),
+  // gemischt mit deinem Geschmack (65 % Nähe zum Vorbild, 35 % passt zu dir)
+  const catById = new Map(catalog.map((t) => [t.id, t]));
+  const seeds = (sp.wie ?? "").split(",").map(Number).filter((x) => catById.has(x)).slice(0, 3).map((id) => catById.get(id)!);
+  let likeRecs: typeof recs | null = null;
+  if (seeds.length) {
+    const net = buildNet(catalog);
+    const nb = netNeighbors(catalog);
+    const near = new Map<number, { v: number; hits: Set<number>; seed: Title; mid: Title | null; best: number }>();
+    const add = (id: number, v: number, seed: Title, mid: Title | null) => {
+      if (seeds.some((x) => x.id === id)) return;
+      const x = near.get(id) ?? { v: 0, hits: new Set<number>(), seed, mid, best: 0 };
+      x.v += v; x.hits.add(seed.id);
+      if (v > x.best) { x.best = v; x.seed = seed; x.mid = mid; }
+      near.set(id, x);
+    };
+    for (const seed of seeds) {
+      for (const n of nb.get(seed.id) ?? []) {
+        add(n.id, n.s, seed, null);
+        for (const m of nb.get(n.id) ?? []) if (m.id !== seed.id) add(m.id, (0.35 * n.s * m.s) / 0.3, seed, catById.get(n.id) ?? null);
+      }
+    }
+    const maxV = Math.max(...[...near.values()].map((x) => x.v), 1e-9);
+    const tasteRank = new Map(recs.map((r, i) => [r.title.id, 1 - i / Math.max(1, recs.length - 1)]));
+    const idx = (id: number) => net.byId.get(id) ?? -1;
+    likeRecs = recs.filter((r) => near.has(r.title.id)).map((r) => {
+      const x = near.get(r.title.id)!;
+      const closeness = Math.min(1, (x.v / maxV) * (1 + 0.3 * (x.hits.size - 1)));
+      const why = x.mid
+        ? `Über „${x.mid.title}“ verwandt mit „${x.seed.title}“`
+        : `Wie „${x.seed.title}“: ${sharedFeatures(net, idx(x.seed.id), idx(r.title.id), 2).join(" · ")}`;
+      return { ...r, score: 0.65 * closeness + 0.35 * (tasteRank.get(r.title.id) ?? 0), reasons: [why, ...r.reasons].slice(0, 3) };
+    }).sort((a, b) => b.score - a.score);
+  }
+
   const recById = new Map(recs.map((r) => [r.title.id, r]));
   const boost = new Map(recs.map((r) => [r.title.id, r.score]));
 
   // 1) Der Stapel: die besten Vorschläge, abwechslungsreich
   const DECK = 25;
-  const diverse = pickDiverse(recs, DECK + 12);
+  const diverse = pickDiverse(likeRecs ?? recs, DECK + 12);
   // Alle 4 Stunden beginnt der Stapel mit einem anderen der 10 besten Vorschläge
   const slot = timeSlot(4);
-  const picks: Pick[] = rotateLead(diverse.slice(0, DECK), slot, user!.id).map((r) => ({
+  const picks: Pick[] = (likeRecs ? diverse.slice(0, DECK) : rotateLead(diverse.slice(0, DECK), slot, user!.id)).map((r) => ({
     id: r.title.id,
     title: r.title.title,
     poster_path: r.title.poster_path,
@@ -245,13 +282,14 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
     const [pos, neg] = ASPECT_LABELS[k] ?? [k, k];
     return [...(c.pos && pos !== "–" ? [{ label: `Wichtig: ${pos}`, n: c.pos }] : []), ...(c.neg && neg !== "–" ? [{ label: `Stört: ${neg}`, n: c.neg }] : [])];
   }).sort((a, b) => b.n - a.n).slice(0, 8);
-  const deckKey = JSON.stringify([sp.stimmung, sp.genre, sp.zeit, sp.zeitraum, sp.modus, sp.mit, slot]);
+  const deckKey = JSON.stringify([sp.stimmung, sp.genre, sp.zeit, sp.zeitraum, sp.modus, sp.mit, sp.wie, slot]);
 
   return (
     <>
       <h1>{mitFriend ? `Was schaut ihr heute?` : "Was soll es heute werden?"}</h1>
       <FinderFilters filters={filters} />
-      <SurpriseMe pool={surprise} />
+      <LikeThis seeds={seeds.map((t) => ({ id: t.id, title: t.title }))} />
+      {!seeds.length && <SurpriseMe pool={surprise} />}
       {duelAns.size < 60 && (
         <Link href="/bewerten/check" className="panel check-invite">
           <span className="bolt" aria-hidden>⚡</span>

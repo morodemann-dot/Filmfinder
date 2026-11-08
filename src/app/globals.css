@@ -820,3 +820,12 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .net-why { display: flex; flex-wrap: wrap; gap: 4px; }
 .net-why .tag { font-size: 0.7rem; }
 .stamp.okay { left: 50%; translate: -50% 0; color: var(--muted); border-color: currentColor; }
+
+/* "Etwas wie …" */
+.like-this { margin-top: 10px; }
+.like-this.is-pending { opacity: 0.6; }
+.like-seeds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.like-seed { display: inline-flex; align-items: center; gap: 6px; }
+.like-seed button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0 0 0 2px; opacity: 0.7; }
+.like-sheet .input { width: 100%; padding: 11px 14px; border-radius: 14px; font-size: 1rem; }
+.like-sheet { max-height: 70dvh; overflow-y: auto; }
