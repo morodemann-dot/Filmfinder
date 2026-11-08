@@ -12,5 +12,6 @@ export default async function NetPage() {
   if (!isAdmin(user?.email)) notFound();
   const { catalog } = await loadTasteData(await createClient(), user!.id);
   const { nodes, edges, genres } = buildNet(catalog);
-  return <FilmNet nodes={nodes} edges={edges} genres={genres} />;
+  // nur das Nötigste an den Browser schicken (Plakate lädt erst die Detail-Liste)
+  return <FilmNet nodes={nodes.map(({ id, t, y, g }) => ({ id, t, y, g }))} edges={edges} genres={genres} />;
 }

@@ -8,12 +8,12 @@
 // 3) Vielfalt der Verbindungen: Ein einzelnes starkes Merkmal (z. B. "Regie: Nolan") darf höchstens 3 der
 //    Verbindungen eines Films stellen – die übrigen Plätze gehen an Filme, die auf andere Weise ähnlich sind.
 import { GENERIC_SUBGENRES, KIND_NAMES, NOISE_KEYWORDS, type FeatureKind } from "./recommend";
-import { KW_DE } from "./aspects";
 import type { Title } from "./types";
 
-const K = 10; // höchstens so viele Verbindungen sucht sich jeder Film
-const SAME_REASON_MAX = 3; // höchstens so viele Verbindungen mit demselben Hauptgrund
-const MIN_SIM = 0.08; // schwächere Ähnlichkeit = keine Verbindung
+const K = 15; // höchstens so viele Verbindungen sucht sich jeder Film
+const SAME_REASON_MAX = 4; // höchstens so viele Verbindungen über dieselbe Person/Reihe als Hauptgrund
+const SUBSTANCE_MIN = 0.45; // so viel der Ähnlichkeit muss aus echten Inhalten kommen (nicht nur Genre/Zeit/Länge/Land)
+const MIN_SIM = 0.1; // schwächere Ähnlichkeit = keine Verbindung
 const MAX_DF = 500; // sehr häufige Merkmale nur beim genauen Nachrechnen berücksichtigen
 const IDF_CAP = 6.5; // Einzelstücke (z. B. Nebendarsteller in nur 2 Filmen) nicht übermächtig werden lassen
 const RELATED = 0.35; // Gewicht verwandter Themen
@@ -21,18 +21,17 @@ const RELATED = 0.35; // Gewicht verwandter Themen
 type Kind = FeatureKind | "zeit" | "laenge" | "verwandt";
 const W: Partial<Record<Kind, number>> = {
   reihe: 1.5, regie: 1.3, drehbuch: 1, subgenre: 1.2, thema: 1, besetzung: 1, musik: 0.8, kamera: 0.6,
-  genrepaar: 0.8, genre: 0.7, vorlage: 0.6, zeit: 0.4, laenge: 0.3, sprache: 0.4, studio: 0.3, stil: 0.4, land: 0.3, budget: 0.2,
+  genrepaar: 0.5, genre: 0.6, vorlage: 0.6, zeit: 0.4, laenge: 0.3, sprache: 0.4, studio: 0.3, stil: 0.4, land: 0.3, budget: 0.2,
 };
 
 export const NET_GENRES = ["Action", "Abenteuer", "Animation", "Komödie", "Krimi", "Dokumentarfilm", "Drama", "Familie",
   "Fantasy", "Historie", "Horror", "Musik", "Mystery", "Liebesfilm", "Science Fiction", "Thriller", "Kriegsfilm", "Western"];
 
-export type NetNode = { id: number; t: string; y: number | null; g: number; p: string | null };
+export type NetNode = { id: number; t: string; y: number | null; g: number; p?: string | null };
 export type NetData = { nodes: NetNode[]; edges: number[]; genres: string[] }; // edges: [i, j, Ähnlichkeit×1000, …]
 type Vec = { keys: string[]; w: Float64Array; norm: number; labels: Map<string, string>; ids: Int32Array; iw: Float64Array };
 export type Net = NetData & { vecs: Vec[]; byId: Map<number, number>; titles: Title[] };
 
-const de = (k: string) => KW_DE[k.toLowerCase()] ?? k;
 const NAME: Partial<Record<Kind, string>> = { thema: "Thema", subgenre: "Genre", genre: "Genre", genrepaar: "Genre-Mix", reihe: "Reihe", zeit: "Zeit", laenge: "Länge" };
 const nameOf = (k: Kind) => NAME[k] ?? KIND_NAMES[k as FeatureKind] ?? k;
 
@@ -44,7 +43,7 @@ function netFeatures(t: Title): { key: string; kind: Kind; label: string; f: num
   const gs = (t.genres ?? []).slice(0, 3).slice().sort();
   for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) add("genrepaar", `${gs[i]}+${gs[j]}`, `${gs[i]} + ${gs[j]}`);
   for (const g of t.wd_genres ?? []) if (!GENERIC_SUBGENRES.has(g)) add("subgenre", g, g);
-  for (const k of t.keywords ?? []) if (!NOISE_KEYWORDS.has(k)) add("thema", k, de(k));
+  for (const k of t.keywords ?? []) if (!NOISE_KEYWORDS.has(k)) add("thema", k, k);
   for (const m of t.main_subjects ?? []) add("thema", m, m.replace(/^Person: /, ""));
   for (const p of t.set_in_period ?? []) add("thema", `zeit:${p}`, `spielt ${p}`, 0.8);
   for (const l of t.narrative_locations ?? []) add("thema", `ort:${l}`, `Schauplatz ${l}`, 0.6);
@@ -75,10 +74,27 @@ function netFeatures(t: Title): { key: string; kind: Kind; label: string; f: num
   return out;
 }
 
+// "Echte Inhalte": was einen Film ausmacht. Genre, Zeit, Länge, Land, Sprache, Studio, Budget sind nur Beiwerk –
+// eine Verbindung allein darüber wäre nicht logisch.
+const SUBSTANCE = ["thema:", "subgenre:", "regie:", "drehbuch:", "besetzung:", "musik:", "kamera:", "reihe:", "vorlage:"];
+const PEOPLE = ["regie:", "drehbuch:", "besetzung:", "musik:", "kamera:", "reihe:"];
 const cache = new WeakMap<Title[], Net>();
+// Der Katalog wird alle 10 Min. neu geladen (neues Objekt) – das Netz nur neu rechnen, wenn sich wirklich etwas geändert hat
+let lastNet: { sig: string; at: number; net: Net } | null = null;
+const NET_TTL = 12 * 3600_000;
 export function buildNet(catalog: Title[]): Net {
   const hit = cache.get(catalog);
   if (hit) return hit;
+  let sum = 0; for (const t of catalog) sum = (sum + t.id * 31 + (t.keywords?.length ?? 0)) % 2_147_483_647;
+  const sig = `${catalog.length}:${sum}`;
+  if (lastNet && lastNet.sig === sig && Date.now() - lastNet.at < NET_TTL) { cache.set(catalog, lastNet.net); return lastNet.net; }
+  const net = computeNet(catalog);
+  lastNet = { sig, at: Date.now(), net };
+  cache.set(catalog, net);
+  return net;
+}
+
+function computeNet(catalog: Title[]): Net {
   const T0 = Date.now(), lap: Record<string, number> = {};
   const titles = catalog.filter((t) => t.media_type === "movie" || !t.media_type);
   const N = titles.length;
@@ -118,6 +134,8 @@ export function buildNet(catalog: Title[]): Net {
   lap.verwandt = Date.now() - T0;
   const keyIds = new Map<string, number>();
   const idOf = (k: string) => { let x = keyIds.get(k); if (x == null) keyIds.set(k, (x = keyIds.size)); return x; };
+  const substantive: number[] = [];
+  const capped: number[] = [];
   // 3) Gewichtete Merkmals-Vektoren (Art × Seltenheit × Rolle), plus verwandte Themen schwach
   const vecs: Vec[] = raw.map((m) => {
     const acc = new Map<string, number>();
@@ -140,6 +158,11 @@ export function buildNet(catalog: Title[]): Net {
     let n = 0; for (const x of w) n += x * x;
     // gleiche Merkmale als sortierte Nummern → schneller Vergleich zweier Filme
     const order = keys.map((k, j) => ({ id: idOf(k), w: w[j] })).sort((a, b) => a.id - b.id);
+    for (const k of keys) if (substantive[idOf(k)] === undefined) {
+      substantive[idOf(k)] = SUBSTANCE.some((p) => k.startsWith(p)) ? 1 : 0;
+      // Personen und Reihen: höchstens 4 Verbindungen über dieselbe Person – Themen dürfen viele Filme teilen
+      capped[idOf(k)] = PEOPLE.some((p) => k.startsWith(p)) ? 1 : 0;
+    }
     return { keys, w, norm: Math.sqrt(n), labels, ids: Int32Array.from(order, (o) => o.id), iw: Float64Array.from(order, (o) => o.w) };
   });
 
@@ -179,20 +202,24 @@ export function buildNet(catalog: Title[]): Net {
     const scored = cand.map((c) => {
       // Skalarprodukt über zwei sortierte Listen (Reißverschluss)
       const o = vecs[c];
-      let dot = 0, lead = -1, leadV = 0, p = 0, q = 0;
+      let dot = 0, sub = 0, lead = -1, leadV = 0, p = 0, q = 0;
       while (p < v.ids.length && q < o.ids.length) {
         const a = v.ids[p], b = o.ids[q];
-        if (a === b) { const x = v.iw[p] * o.iw[q]; dot += x; if (x > leadV) { leadV = x; lead = a; } p++; q++; }
-        else if (a < b) p++; else q++;
+        if (a === b) {
+          const x = v.iw[p] * o.iw[q]; dot += x;
+          if (substantive[a]) sub += x;
+          if (x > leadV) { leadV = x; lead = a; }
+          p++; q++;
+        } else if (a < b) p++; else q++;
       }
-      return { c, s: dot / (v.norm * o.norm || 1), lead };
-    }).filter((x) => x.s >= MIN_SIM).sort((a, b) => b.s - a.s);
+      return { c, s: dot / (v.norm * o.norm || 1), lead, sub: dot ? sub / dot : 0 };
+    }).filter((x) => x.s >= MIN_SIM && x.sub >= SUBSTANCE_MIN).sort((a, b) => b.s - a.s);
     const perLead = new Map<number, number>();
     let taken = 0;
     for (const x of scored) {
       if (taken >= K) break;
       const n = perLead.get(x.lead) ?? 0;
-      if (n >= SAME_REASON_MAX) continue;
+      if (capped[x.lead] && n >= SAME_REASON_MAX) continue;
       perLead.set(x.lead, n + 1);
       const key = i < x.c ? `${i}-${x.c}` : `${x.c}-${i}`;
       edgeMap.set(key, Math.max(edgeMap.get(key) ?? 0, x.s));
@@ -211,9 +238,7 @@ export function buildNet(catalog: Title[]): Net {
   });
   const edges: number[] = [];
   for (const [k, s] of edgeMap) { const [a, b] = k.split("-").map(Number); edges.push(a, b, Math.round(s * 1000)); }
-  const net: Net = { nodes, edges, genres, vecs, byId: new Map(titles.map((t, i) => [t.id, i])), titles };
-  cache.set(catalog, net);
-  return net;
+  return { nodes, edges, genres, vecs, byId: new Map(titles.map((t, i) => [t.id, i])), titles };
 }
 
 // Warum sind zwei Filme verbunden? Die gemeinsamen Merkmale, stärkste zuerst
