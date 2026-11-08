@@ -272,3 +272,59 @@ export function netNeighbors(catalog: Title[]): Map<number, { id: number; s: num
   nbCache.set(net, m);
   return m;
 }
+
+// Netz-Wanderung ("Personalized PageRank"): Man startet immer wieder bei deinen Filmen und wandert
+// zufällig über die Verbindungen weiter (starke Verbindungen werden öfter genommen). Filme, bei denen man
+// dabei oft landet – auch über 2, 3 Schritte und von vielen deiner Filme aus – liegen "in deiner Ecke" des Netzes.
+const adjCache = new WeakMap<Net, { start: Int32Array; to: Int32Array; p: Float64Array }>();
+function walkGraph(net: Net) {
+  const hit = adjCache.get(net);
+  if (hit) return hit;
+  const n = net.nodes.length, deg = new Int32Array(n), wsum = new Float64Array(n);
+  for (let k = 0; k < net.edges.length; k += 3) { deg[net.edges[k]]++; deg[net.edges[k + 1]]++; }
+  const start = new Int32Array(n + 1);
+  for (let i = 0; i < n; i++) start[i + 1] = start[i] + deg[i];
+  const to = new Int32Array(start[n]), w = new Float64Array(start[n]), fill = start.slice(0, n);
+  for (let k = 0; k < net.edges.length; k += 3) {
+    const a = net.edges[k], b = net.edges[k + 1], s = net.edges[k + 2] / 1000;
+    to[fill[a]] = b; w[fill[a]++] = s; to[fill[b]] = a; w[fill[b]++] = s;
+    wsum[a] += s; wsum[b] += s;
+  }
+  // Übergangswahrscheinlichkeit: Anteil der Verbindungsstärke
+  const p = new Float64Array(start[n]);
+  for (let i = 0; i < n; i++) for (let e = start[i]; e < start[i + 1]; e++) p[e] = w[e] / (wsum[i] || 1);
+  const g = { start, to, p };
+  adjCache.set(net, g);
+  return g;
+}
+
+// Von JEDEM deiner Filme aus ein paar Schritte durchs Netz wandern (2 Schritte: Nachbarn und deren Nachbarn). Pro Startfilm zählt die
+// Erreichbarkeit nur abgeschwächt (Wurzel) – so gewinnt ein Film, den man von VIELEN deiner Filme aus erreicht,
+// gegen einen, der nur in einer dichten Gruppe (z. B. alle Nolan-Filme) oft angelaufen wird.
+// Ergebnis normiert: Durchschnitt der erreichten Filme = 1.
+export function netWalk(catalog: Title[], seeds: Map<number, number>, restart = 0.3, steps = 2): Map<number, number> {
+  const net = buildNet(catalog);
+  const { start, to, p } = walkGraph(net);
+  const total = new Map<number, number>();
+  for (const [id, w] of seeds) {
+    const s = net.byId.get(id);
+    if (s == null || w <= 0) continue;
+    let x = new Map<number, number>([[s, 1]]);
+    const reach = new Map<number, number>();
+    for (let it = 0; it < steps; it++) {
+      const nx = new Map<number, number>();
+      for (const [i, xi] of x) for (let e = start[i]; e < start[i + 1]; e++) {
+        const j = to[e];
+        nx.set(j, (nx.get(j) ?? 0) + (1 - restart) * xi * p[e]);
+      }
+      for (const [j, v] of nx) if (j !== s) reach.set(j, (reach.get(j) ?? 0) + v);
+      x = nx;
+    }
+    for (const [j, v] of reach) total.set(j, (total.get(j) ?? 0) + w * Math.sqrt(v));
+  }
+  if (!total.size) return new Map();
+  let mean = 0; for (const v of total.values()) mean += v; mean /= total.size;
+  const out = new Map<number, number>();
+  for (const [i, v] of total) out.set(net.nodes[i].id, v / mean);
+  return out;
+}

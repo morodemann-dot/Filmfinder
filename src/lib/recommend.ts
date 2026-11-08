@@ -12,7 +12,7 @@
 import type { Title } from "./types";
 import { aspectStrength } from "./aspects";
 import { AI_SCALES, type AiScale } from "./aiFeatures";
-import { netNeighbors } from "./filmNet";
+import { netNeighbors, netWalk } from "./filmNet";
 
 // reason: Grund bei "Kein Interesse"; aspects: was gefallen/gestört hat ("+regie:Nolan", "-aspekt:langatmig")
 // 7) Antworten aus dem Modell-Duell als zusätzliche Einträge (nur fürs Profil, nicht als "gesehen")
@@ -103,6 +103,7 @@ export type ScoreOptions = {
   originWeight?: number; // 4) Herkunftsland, Originalsprache, Studio als Merkmal
   genreQuality?: boolean; // 5) Qualität im Vergleich zum Genre (Horror mit 7,0 ist stark)
   genrePairWeight?: number; // 6) Genre-Kombinationen (Sci-Fi + Drama ≠ Sci-Fi + Action)
+  walkWeight?: number; // 12) Netz-Wanderung: in deiner "Ecke" des Filmnetzes (über mehrere Schritte) – 0 = aus
   netWeight?: number; // 11) Filmnetz: Nähe zu deinen Filmen im Merkmals-Netz (0 = aus)
   negWeight?: number; // 10) Schlechte Bewertungen, "Kein Interesse" und "passt nicht" stärker zählen (1 = wie bisher)
   recWeight?: number; // 9) TMDB-Empfehlungen: "Wer X mochte, mochte auch Y" (0 = aus)
@@ -413,6 +414,18 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     }
   }
 
+  // 12) Netz-Wanderung: einmal von deinen positiven, einmal von deinen negativen Filmen aus
+  let walkPos = new Map<number, number>(), walkNeg = new Map<number, number>();
+  if (opts.walkWeight && catalog) {
+    const pos = new Map<number, number>(), neg = new Map<number, number>();
+    for (const r of rated) {
+      const w = recSignal(r, 1);
+      if (w >= 0.3) pos.set(r.id, w); else if (w <= -0.3) neg.set(r.id, -w); // schwache Signale ("okay") nicht als Startpunkt
+    }
+    walkPos = netWalk(catalog, pos);
+    walkNeg = netWalk(catalog, neg);
+  }
+
   // 9) TMDB-Empfehlungen: Was empfiehlt TMDB zu Filmen, die du magst (oder nicht magst)?
   const recFwd = new Map<number, { sum: number; best: { t: Title; c: number } | null }>();
   const recUser = new Map<number, number>();
@@ -449,7 +462,7 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
   }
   const posIndex = buildSimIndex(anchorsPos.map((a) => a.v));
   const negIndex = buildSimIndex(anchorsNeg);
-  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, posIndex, negIndex, genreQ, recFwd, recUser, netNear, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
+  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, posIndex, negIndex, genreQ, recFwd, recUser, netNear, walkPos, walkNeg, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -672,6 +685,11 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
         score += opts.netWeight * Math.sign(x.sum) * Math.log1p(Math.abs(x.sum));
         netFrom = x.best;
       }
+    }
+    // 12) Netz-Wanderung: wie oft man von deinen Filmen aus hier landet (1 = Durchschnitt) – minus Flop-Ecke
+    if (opts.walkWeight && profile.walkPos?.size) {
+      const wp = profile.walkPos.get(t.id) ?? 0, wn = profile.walkNeg.get(t.id) ?? 0;
+      score += opts.walkWeight * (Math.log1p(wp) - 0.6 * Math.log1p(wn));
     }
     // 9) TMDB-Empfehlungen: in beide Richtungen (dein Film empfiehlt diesen / dieser empfiehlt deinen)
     let recFrom: { t: Title; c: number } | null = null;

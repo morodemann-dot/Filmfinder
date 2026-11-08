@@ -65,6 +65,11 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "net2", name: "+ 11 Filmnetz", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, netWeight: 0.3 } },
   { key: "net3", name: "+ 11 Filmnetz (stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, netWeight: 0.6 } },
   { key: "net4", name: "+ 11 Filmnetz (sehr stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, netWeight: 1.2 } },
+  // 12) Netz-Wanderung (mehrere Schritte, von allen deinen Filmen aus)
+  { key: "w1", name: "+ 12 Netz-Wanderung (leicht)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, walkWeight: 0.15 } },
+  { key: "w2", name: "+ 12 Netz-Wanderung", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, walkWeight: 0.3 } },
+  { key: "w3", name: "+ 12 Netz-Wanderung (stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, walkWeight: 0.6 } },
+  { key: "w4", name: "+ 12 Netz-Wanderung (sehr stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, walkWeight: 1.2 } },
   { key: "net2s", name: "+ 11 Filmnetz statt alter Ähnlichkeit", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, netWeight: 0.3, similarityWeight: 0 } },
   { key: "r4", name: "+ 9 TMDB-Empfehlungen (sehr stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 1.2 } },
 ];
@@ -82,10 +87,11 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Ab 7. Nov. spät: 1–6 lag live klar hinten (50 %) → ersetzt durch "Negatives schwächer ×0,7" (nachträglich gleichauf, 79 %)
 // Ab 8. Nov.: Filmnetz live testen (statt ×0,7, das live verloren hat)
 // 8. Nov. abends: nachträglich Filmnetz stark 80 % vor allen anderen (79 %) → "stark" live testen
-export const DUEL_SOURCES: SourceDef[] = [byKey("kombi"), byKey("net3"), byKey("d4")];
+// 8. Nov. spät: streng bewertet waren kombi/net3/d4 live gleichauf (52–54 %) → Netz-Wanderung live testen
+export const DUEL_SOURCES: SourceDef[] = [byKey("kombi"), byKey("w2"), byKey("net3")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
 // Nov. 2026: Negatives stärker schadet (×1,5 78 %, ×2 75 %, ×3 68 % gegenüber 79 %) → jetzt: schwächer?
-export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "kombi", "net2", "net3", "net4", "net2s"].map(byKey);
+export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "kombi", "net3", "w1", "w2", "w3", "w4"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
 export const sourceName = (k: string) => ALL_SOURCES.find((s) => s.key === k)?.name ?? k;
 
