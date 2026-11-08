@@ -111,9 +111,9 @@ export function rankWith(src: SourceDef, rated: RatedTitle[], catalog: Title[], 
 
 // Nachträglicher Test: Wie oft stuft die Variante einen Film, der dir gepasst hat,
 // höher ein als einen, der nicht gepasst hat? 50 % = Raten.
-export function duelAuc(ranked: { title: Title; score: number }[], answers: Map<number, boolean>) {
-  const yes = ranked.filter((r) => answers.get(r.title.id) === true).map((r) => r.score);
-  const no = ranked.filter((r) => answers.get(r.title.id) === false).map((r) => r.score);
+export function duelAuc(ranked: { title: Title; score: number }[], answers: Map<number, number>) {
+  const yes = ranked.filter((r) => (answers.get(r.title.id) ?? -1) >= 1).map((r) => r.score);
+  const no = ranked.filter((r) => { const v = answers.get(r.title.id); return v != null && v < 1; }).map((r) => r.score);
   let right = 0;
   for (const a of yes) for (const b of no) right += a > b ? 1 : a === b ? 0.5 : 0;
   return { auc: yes.length && no.length ? right / (yes.length * no.length) : null, yes: yes.length, no: no.length };
@@ -125,7 +125,8 @@ export function duelAuc(ranked: { title: Title; score: number }[], answers: Map<
 // Varianten ohne Duell-Lernen werden genauso gezählt (gleiche Paare), damit der Vergleich fair ist.
 const FOLDS = 5;
 const foldOf = (id: number) => ((id * 2654435761) >>> 0) % FOLDS;
-export function duelAucCV(src: SourceDef, rated: RatedTitle[], catalog: Title[], ai: Map<string, Map<number, AiFeatures>>, films: Title[], answers: Map<number, boolean>) {
+// Antworten: 1 = würde ich schauen, 0,5 = okay, 0 = passt nicht. Gezählt wird streng: "würde ich schauen" gegen den Rest.
+export function duelAucCV(src: SourceDef, rated: RatedTitle[], catalog: Title[], ai: Map<string, Map<number, AiFeatures>>, films: Title[], answers: Map<number, number>) {
   const learns = !!src.extra?.duelWeight;
   const byId = new Map(films.map((t) => [t.id, t]));
   const once = learns ? null : new Map(rankWith(src, rated, catalog, ai, films).map((r) => [r.title.id, r.score]));
@@ -138,8 +139,8 @@ export function duelAucCV(src: SourceDef, rated: RatedTitle[], catalog: Title[],
       const train = new Map([...answers].filter(([id]) => foldOf(id) !== k));
       score = new Map(rankWith(src, rated, catalog, ai, test, duelEntries(train, byId)).map((r) => [r.title.id, r.score]));
     }
-    const yes = test.filter((t) => answers.get(t.id) === true).map((t) => score!.get(t.id) ?? -99);
-    const no = test.filter((t) => answers.get(t.id) === false).map((t) => score!.get(t.id) ?? -99);
+    const yes = test.filter((t) => answers.get(t.id)! >= 1).map((t) => score!.get(t.id) ?? -99);
+    const no = test.filter((t) => answers.get(t.id)! < 1).map((t) => score!.get(t.id) ?? -99);
     yesN += yes.length; noN += no.length;
     for (const a of yes) for (const b of no) { right += a > b ? 1 : a === b ? 0.5 : 0; pairs++; }
   }

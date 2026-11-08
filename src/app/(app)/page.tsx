@@ -57,7 +57,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   const user = await getUser();
   const [{ rated, catalog }, snoozed, together, duelAns] = await Promise.all([
     loadTasteData(supabase, user!.id), loadSnoozed(supabase, user!.id), togetherFriends(user!.id),
-    APP_SETTINGS.duelWeight ? loadDuelAnswers(user!.id) : Promise.resolve(new Map<number, boolean>()),
+    APP_SETTINGS.duelWeight ? loadDuelAnswers(user!.id) : Promise.resolve(new Map<number, number>()),
   ]);
   // Gemeinsam schauen: nur wenn beide es freigegeben haben
   const friendsAvailable = together.me?.share_together ? together.friends : [];

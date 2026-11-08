@@ -88,8 +88,8 @@ export async function duelStartRound(): Promise<{ cards: number; sources: string
     const picks = new Map<number, Set<string>>();
     // 7) bisherige Duell-Antworten als Lernstoff (nur Varianten mit duelWeight nutzen sie)
     const byIdAll = new Map(catalog.map((t) => [t.id, t]));
-    const learnFromDuel = duelEntries(new Map(rows.filter((r) => r.answer === "passt" || r.answer === "passt_nicht")
-      .map((r) => [r.title_id, r.answer === "passt"] as [number, boolean])), byIdAll);
+    const learnFromDuel = duelEntries(new Map(rows.filter((r) => r.answer === "passt" || r.answer === "okay" || r.answer === "passt_nicht")
+      .map((r) => [r.title_id, answerValue(r.answer)] as [number, number])), byIdAll);
     let mainRanked: ReturnType<typeof rankWith> = [];
     for (const src of active) {
       const ranked = rankWith(src, rated, catalog, ai, fair, learnFromDuel);
@@ -151,7 +151,7 @@ export async function duelCards(): Promise<DuelCard[]> {
     .sort((a, b) => mix(a.id) - mix(b.id));
 }
 
-export async function duelAnswer(titleId: number, answer: "passt" | "passt_nicht" | "gesehen" | null) {
+export async function duelAnswer(titleId: number, answer: "passt" | "okay" | "passt_nicht" | "gesehen" | null) {
   const user = await requireAdminUser();
   const { error } = await createAdminClient().from("ai_duel")
     .update({ answer, answered_at: answer ? new Date().toISOString() : null })
@@ -159,14 +159,16 @@ export async function duelAnswer(titleId: number, answer: "passt" | "passt_nicht
   if (error) throw new Error(error.message);
 }
 
-export type DuelResult = { source: string; name: string; passt: number; nicht: number; gesehen: number; offen: number };
+export type DuelResult = { source: string; name: string; passt: number; okay: number; nicht: number; gesehen: number; offen: number };
 
 // Beantwortete Testfilme (für den nachträglichen Test)
-export async function duelAnswers(): Promise<Map<number, boolean>> {
+export async function duelAnswers(): Promise<Map<number, number>> {
   const user = await requireAdminUser();
   const rows = await duelRows(user.id).catch(() => []);
-  return new Map(rows.filter((r) => r.answer === "passt" || r.answer === "passt_nicht").map((r) => [r.title_id, r.answer === "passt"]));
+  return new Map(rows.filter((r) => r.answer === "passt" || r.answer === "okay" || r.answer === "passt_nicht").map((r) => [r.title_id, answerValue(r.answer)]));
 }
+// 1 = würde ich schauen, 0,5 = okay, 0 = passt nicht
+function answerValue(a: string | null) { return a === "passt" ? 1 : a === "okay" ? 0.5 : 0; }
 
 // 4) Auswertung: Wie viele Vorschläge jeder Quelle haben gepasst?
 export async function duelResults(): Promise<{
@@ -181,11 +183,12 @@ export async function duelResults(): Promise<{
       source,
       name,
       passt: mine.filter((r) => r.answer === "passt").length,
+      okay: mine.filter((r) => r.answer === "okay").length,
       nicht: mine.filter((r) => r.answer === "passt_nicht").length,
       gesehen: mine.filter((r) => r.answer === "gesehen").length,
       offen: mine.filter((r) => !r.answer).length,
     };
-  }).filter((r) => r.passt + r.nicht + r.gesehen + r.offen > 0);
+  }).filter((r) => r.passt + r.okay + r.nicht + r.gesehen + r.offen > 0);
 
   // Fairer Vergleich: nur Runden, in denen ALLE aktuellen Varianten antreten
   // (ab dem Zeitpunkt, zu dem die zuletzt hinzugekommene Variante zum ersten Mal beantwortet wurde)

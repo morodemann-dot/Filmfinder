@@ -125,13 +125,14 @@ export async function loadSnoozed(supabase: SupabaseClient, userId: string): Pro
 }
 
 // Antworten aus dem Modell-Duell (nur der Server darf die Tabelle lesen). Fehlt die Tabelle: leer.
-export async function loadDuelAnswers(userId: string): Promise<Map<number, boolean>> {
-  const out = new Map<number, boolean>();
+// Werte: 1 = würde ich schauen, 0,5 = okay, 0 = passt nicht
+export async function loadDuelAnswers(userId: string): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
   for (let from = 0; ; from += 1000) {
     const { data, error } = await createAdminClient().from("ai_duel").select("title_id,answer")
-      .eq("user_id", userId).in("answer", ["passt", "passt_nicht"]).range(from, from + 999);
+      .eq("user_id", userId).in("answer", ["passt", "okay", "passt_nicht"]).range(from, from + 999);
     if (error || !data) break;
-    for (const r of data as { title_id: number; answer: string }[]) out.set(r.title_id, r.answer === "passt");
+    for (const r of data as { title_id: number; answer: string }[]) out.set(r.title_id, r.answer === "passt" ? 1 : r.answer === "okay" ? 0.5 : 0);
     if (data.length < 1000) break;
   }
   return out;

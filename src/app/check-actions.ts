@@ -33,7 +33,7 @@ export async function checkStatus(): Promise<{ answered: number; open: number } 
     const user = await me();
     const rows = await myRows(user.id);
     return {
-      answered: rows.filter((r) => r.answer === "passt" || r.answer === "passt_nicht").length,
+      answered: rows.filter((r) => r.answer === "passt" || r.answer === "okay" || r.answer === "passt_nicht").length,
       open: rows.filter((r) => !r.answer && r.picked_by.includes("check")).length,
     };
   } catch {
@@ -52,7 +52,8 @@ export async function checkStart(): Promise<{ cards: number; error?: string }> {
     if (open.length >= ROUND) return { cards: open.length };
 
     const byId = new Map(catalog.map((t) => [t.id, t]));
-    const answers = new Map(rows.filter((r) => r.answer === "passt" || r.answer === "passt_nicht").map((r) => [r.title_id, r.answer === "passt"] as [number, boolean]));
+    const answers = new Map(rows.filter((r) => r.answer === "passt" || r.answer === "okay" || r.answer === "passt_nicht")
+      .map((r) => [r.title_id, r.answer === "passt" ? 1 : r.answer === "okay" ? 0.5 : 0] as [number, number]));
     const skip = new Set([...rated.map((r) => r.id), ...rows.map((r) => r.title_id), ...snoozed]);
     const known = new Set(rated.filter((r) => r.status === "gesehen" || r.status === "nicht_interessiert").map(franchiseOf).filter(Boolean));
     const pool = catalog.filter((t) => !skip.has(t.id) && (t.release_year ?? 0) >= SUGGEST_FROM_YEAR && (t.vote_count ?? 0) >= 300 && !known.has(franchiseOf(t)));
@@ -95,7 +96,7 @@ export async function checkCards(): Promise<DuelCard[]> {
   })).sort((a, b) => mix(a.id) - mix(b.id));
 }
 
-export async function checkAnswer(titleId: number, answer: "passt" | "passt_nicht" | "gesehen" | null) {
+export async function checkAnswer(titleId: number, answer: "passt" | "okay" | "passt_nicht" | "gesehen" | null) {
   const user = await me();
   // "Kenne ich schon" = gesehen (ohne Punkte) → taucht in Vorschlägen nicht mehr auf; Rückgängig nimmt das wieder raus
   const { data: before } = await createAdminClient().from("ai_duel").select("answer").eq("user_id", user.id).eq("title_id", titleId).maybeSingle();

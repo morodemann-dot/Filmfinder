@@ -6,7 +6,10 @@ import DuelDeck, { type DeckLabels } from "@/app/(app)/admin/DuelDeck";
 import { checkAnswer, checkCards, checkStart } from "@/app/check-actions";
 import type { DuelCard } from "@/app/ki-actions";
 
-const LABELS: DeckLabels = { yes: "Reizt mich", no: "Eher nicht", stampYes: "REIZT MICH", stampNo: "EHER NICHT", eyebrow: "Würdest du den schauen?" };
+const LABELS: DeckLabels = {
+  yes: "Würde ich schauen", mid: "Geht so", no: "Eher nicht",
+  stampYes: "SCHAUE ICH", stampMid: "GEHT SO", stampNo: "EHER NICHT", eyebrow: "Würdest du den schauen?",
+};
 
 export default function CheckPlay({ initialCards, answered, onRoundDone }: {
   initialCards: DuelCard[]; answered: number; onRoundDone?: () => void; // Tutorial: nach einer Runde weiter
@@ -37,7 +40,7 @@ export default function CheckPlay({ initialCards, answered, onRoundDone }: {
 
   if (cards.length && !finished) {
     return <DuelDeck key={round} cards={cards} labels={LABELS}
-      onAnswer={async (id, a) => { await checkAnswer(id, a); if (a === "passt" || a === "passt_nicht") setDone((n) => n + 1); }}
+      onAnswer={async (id, a) => { await checkAnswer(id, a); if (a === "passt" || a === "okay" || a === "passt_nicht") setDone((n) => n + 1); }}
       onFinished={() => { if (onRoundDone) { onRoundDone(); return; } setFinished(true); setCards([]); }} />;
   }
   return (

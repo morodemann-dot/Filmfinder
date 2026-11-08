@@ -266,3 +266,5 @@ alter table public.titles add column if not exists tmdb_recs integer[];         
 alter table public.titles add column if not exists recs_checked_at timestamptz;  -- wann zuletzt abgeholt
 notify pgrst, 'reload schema';
 alter table public.profiles add column if not exists onboarding_done_at timestamptz;
+alter table public.ai_duel drop constraint if exists ai_duel_answer_check;
+alter table public.ai_duel add constraint ai_duel_answer_check check (answer in ('passt', 'okay', 'passt_nicht', 'gesehen'));

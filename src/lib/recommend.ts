@@ -18,10 +18,12 @@ import { netNeighbors } from "./filmNet";
 // 7) Antworten aus dem Modell-Duell als zusätzliche Einträge (nur fürs Profil, nicht als "gesehen")
 export const DUEL_YES = "duell_passt";
 export const DUEL_NO = "duell_nicht";
-export function duelEntries(answers: Map<number, boolean>, byId: Map<number, Title>): RatedTitle[] {
-  return [...answers].flatMap(([id, yes]) => {
+export const DUEL_OK = "duell_okay";
+// Antworten: 1 = würde ich schauen, 0,5 = okay, 0 = passt nicht
+export function duelEntries(answers: Map<number, number>, byId: Map<number, Title>): RatedTitle[] {
+  return [...answers].flatMap(([id, v]) => {
     const t = byId.get(id);
-    return t ? [{ ...t, rating: null, status: yes ? DUEL_YES : DUEL_NO }] : [];
+    return t ? [{ ...t, rating: null, status: v >= 1 ? DUEL_YES : v > 0 ? DUEL_OK : DUEL_NO }] : [];
   });
 }
 
@@ -240,6 +242,7 @@ function interestWeightRaw(r: RatedTitle, byRating: boolean, duelWeight: number,
   // 7) Duell: "passt" = will ich sehen (ähnlich Merkliste, etwas stärker), "passt nicht" = eher kein Interesse
   if (r.status === DUEL_YES) return 0.8 * duelWeight;
   if (r.status === DUEL_NO) return -0.5 * duelWeight;
+  if (r.status === DUEL_OK) return 0.15 * duelWeight; // "okay": passt grob, aber nicht begeisternd
   let w = r.status === "gesehen" ? 1 : r.status === "merkliste" ? 0.5 * swipe : r.status === "nicht_interessiert" ? -0.7 * swipe : 0;
   if (byRating && r.status === "gesehen" && r.rating) {
     const x = r.rating;
@@ -258,6 +261,7 @@ function recSignalRaw(r: RatedTitle) {
   let w = 0;
   if (r.status === "gesehen" && r.rating) { const x = r.rating; w = x >= 9 ? 1.6 : x >= 8 ? 1.3 : x >= 7 ? 1 : x >= 6 ? 0.4 : x >= 5 ? -0.2 : -1; }
   else if (r.status === "merkliste" || r.status === DUEL_YES) w = 0.6;
+  else if (r.status === DUEL_OK) w = 0.15;
   else if (r.status === "nicht_interessiert" || r.status === DUEL_NO) w = -0.6;
   if (r.favorite) w = Math.max(w, 2);
   return w;
@@ -364,6 +368,7 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     else if (r.status === "nicht_interessiert") add(r, -2, 0.5 * (opts.swipeWeight ?? 1) * nw, null); // schwaches Minus
     else if (r.status === "merkliste") add(r, 1, 0.3 * (opts.swipeWeight ?? 1), null); // sehr schwaches Plus
     else if (r.status === DUEL_YES && opts.duelWeight) add(r, 1.5, 0.4 * opts.duelWeight, null);
+    else if (r.status === DUEL_OK && opts.duelWeight) add(r, 0.3, 0.2 * opts.duelWeight, null);
     else if (r.status === DUEL_NO && opts.duelWeight) add(r, -1.5, 0.4 * opts.duelWeight * nw, null);
     if (r.favorite) add(r, 2, 0.8, null); // Lieblingsfilm: zusätzliches, deutliches Plus
   }

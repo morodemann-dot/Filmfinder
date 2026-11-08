@@ -112,7 +112,7 @@ export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro
           Drei Varianten wählen ihre besten Vorschläge aus dem ganzen Katalog – wie der echte Filmfinder (ab 1980, nichts schon Eingeordnetes,
           keine weiteren Teile bekannter Reihen): die neue App (alle Verbesserungen), die alte App und „alle Verbesserungen ohne Ähnlichkeit“. Ganz ohne KI.
           Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
-          Du siehst nicht, welcher Vorschlag von wem kommt, und sagst nur: passt zu mir oder nicht.
+          Du siehst nicht, welcher Vorschlag von wem kommt, und sagst: würde ich wirklich schauen, okay – oder passt gar nicht.
           Deine Antworten fließen <strong>auch</strong> in dein Geschmacksprofil ein – jede Runde macht die Vorschläge im Filmfinder besser.
         </p>
         {!duel ? (
@@ -153,7 +153,7 @@ export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro
               </details>
             )}
             <p className="caption" style={{ margin: 0 }}>
-              Treffer = Anteil der Vorschläge, die zu dir passen („schon gesehen“ zählt nicht mit). Bei der <strong>Gegenprobe</strong> ist es
+              Treffer = Anteil der Vorschläge, die du wirklich schauen würdest („okay“ zählt nicht als Treffer, „schon gesehen“ zählt gar nicht mit). Bei der <strong>Gegenprobe</strong> ist es
               umgekehrt: Treffer = die App hat richtig vorhergesagt, dass der Film <em>nicht</em> passt. Ab etwa 20 bewerteten Karten pro Zeile wird es aussagekräftig.
             </p>
             <div className="row" style={{ justifyContent: "space-between" }}>
@@ -244,7 +244,7 @@ function RetroBody({ retro }: { retro: Retro[] }) {
               <div>
                 <div className="eyebrow" style={{ marginBottom: 4 }}>Nachträglicher Test auf deinen Antworten</div>
                 <p className="caption" style={{ marginTop: 0 }}>
-                  Wie oft hätte jede Variante einen Film, der dir gepasst hat ({retro[0].yes}), höher eingestuft als einen, der nicht gepasst hat
+                  Wie oft hätte jede Variante einen Film, den du wirklich schauen würdest ({retro[0].yes}), höher eingestuft als einen, der nur okay war oder nicht gepasst hat
                   ({retro[0].no})? 50 % = Raten. So lassen sich auch neue Varianten prüfen, ohne neu zu tindern.
                   {" "}Fair geteilt: Varianten mit „Duell-Antworten“ lernen immer nur aus 4/5 deiner Antworten und müssen das
                   übrige Fünftel vorhersagen (fünfmal, bis jede Antwort einmal geprüft wurde).
@@ -275,7 +275,7 @@ async function CompareSection({ userId, statusRated }: { userId: string; statusR
 async function RetroSection({ userId }: { userId: string }) {
   const supabase = await createClient();
   const [{ rated, catalog }, ai, answers] = await Promise.all([
-    loadTasteData(supabase, userId), loadAiFeatures(supabase), duelAnswers().catch(() => new Map<number, boolean>()),
+    loadTasteData(supabase, userId), loadAiFeatures(supabase), duelAnswers().catch(() => new Map<number, number>()),
   ]);
   if (answers.size < 6) return null;
   const { data } = await supabase.from("titles").select("*").in("id", [...answers.keys()]);
@@ -292,25 +292,28 @@ export const KiRetroSlot = ({ userId }: { userId: string }) =>
   <Suspense fallback={<Loading what="Der nachträgliche Test" />}><RetroSection userId={userId} /></Suspense>;
 
 // Auswertungstabelle – bei der Gegenprobe zählt "passt nicht" als Treffer
-function ResultsTable({ results }: { results: { source: string; name: string; passt: number; nicht: number; gesehen: number }[] }) {
+function ResultsTable({ results }: { results: { source: string; name: string; passt: number; okay?: number; nicht: number; gesehen: number }[] }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 46px 46px 40px 58px", gap: "8px 8px", alignItems: "baseline" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 44px 40px 40px 34px 54px", gap: "8px 6px", alignItems: "baseline" }}>
       <span />
-      <span className="eyebrow" style={{ textAlign: "right" }}>Passt</span>
+      <span className="eyebrow" style={{ textAlign: "right" }}>Schaue</span>
+      <span className="eyebrow" style={{ textAlign: "right" }}>Okay</span>
       <span className="eyebrow" style={{ textAlign: "right" }}>Nicht</span>
       <span className="eyebrow" style={{ textAlign: "right" }}>Ges.</span>
       <span className="eyebrow" style={{ textAlign: "right" }}>Treffer</span>
       {results.map((r) => {
-        const judged = r.passt + r.nicht;
+        const ok = r.okay ?? 0;
+        const judged = r.passt + ok + r.nicht;
         const neg = r.source === "probe-neg";
         const probe = r.source.startsWith("probe-");
         return (
           <Fragment key={r.source}>
             <span className={probe ? "caption" : undefined} style={probe ? { fontStyle: "italic" } : undefined}>{r.name}</span>
             <span style={{ textAlign: "right" }}>{r.passt}</span>
+            <span style={{ textAlign: "right" }}>{ok}</span>
             <span style={{ textAlign: "right" }}>{r.nicht}</span>
             <span className="caption" style={{ textAlign: "right" }}>{r.gesehen}</span>
-            <span style={{ textAlign: "right", fontWeight: 700 }}>{judged ? pct((neg ? r.nicht : r.passt) / judged) : "–"}</span>
+            <span style={{ textAlign: "right", fontWeight: 700 }}>{judged ? pct((neg ? r.nicht + ok : r.passt) / judged) : "–"}</span>
           </Fragment>
         );
       })}

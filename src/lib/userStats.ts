@@ -38,13 +38,14 @@ export async function userStats(meId: string): Promise<{ users: UserStat[]; erro
   let n = 0;
   for (const u of ids) {
     const mine = fb.filter((f) => f.user_id === u);
-    const dl = duel.filter((d) => d.user_id === u && (d.answer === "passt" || d.answer === "passt_nicht"));
+    const dl = duel.filter((d) => d.user_id === u && (d.answer === "passt" || d.answer === "okay" || d.answer === "passt_nicht"));
+    // streng: nur "würde ich schauen" zählt als Treffer, "okay" zählt wie "nicht"
     const count = (tag: string, yes: boolean) => dl.filter((d) => d.picked_by.includes(tag) && (d.answer === "passt") === yes).length;
     let auc: number | null = null;
     if (dl.length >= 20) {
       try {
         const { rated, catalog } = await loadTasteData(admin, u);
-        const answers = new Map(dl.map((d) => [d.title_id, d.answer === "passt"]));
+        const answers = new Map(dl.map((d) => [d.title_id, d.answer === "passt" ? 1 : d.answer === "okay" ? 0.5 : 0]));
         const byId = new Map(catalog.map((t) => [t.id, t]));
         const films = [...answers.keys()].flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
         auc = duelAucCV(current, rated, catalog, new Map(), films, answers).auc;

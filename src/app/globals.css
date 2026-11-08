@@ -819,3 +819,4 @@ label.row.small input[type="checkbox"] { flex: none; margin-top: 1px; }
 .net-bar span { display: block; height: 100%; border-radius: 4px; }
 .net-why { display: flex; flex-wrap: wrap; gap: 4px; }
 .net-why .tag { font-size: 0.7rem; }
+.stamp.okay { left: 50%; translate: -50% 0; color: var(--muted); border-color: currentColor; }

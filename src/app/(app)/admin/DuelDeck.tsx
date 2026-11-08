@@ -6,18 +6,22 @@ import Poster from "@/components/Poster";
 import { duelAnswer, type DuelCard } from "@/app/ki-actions";
 
 // Blindes Modell-Duell: passt der Film zu dir? (Antworten fließen seit Nov. 2026 ins Profil ein, Verbesserung 7)
-type Answer = "passt" | "passt_nicht" | "gesehen";
+// Drei Stufen: würde ich wirklich schauen / okay (nicht schlecht, aber eher nicht) / passt gar nicht
+type Answer = "passt" | "okay" | "passt_nicht" | "gesehen";
 const THRESHOLD = 90;
 
 // Wird auch für den "Geschmacks-Check" aller Nutzer verwendet (andere Beschriftung, eigene Speicher-Funktion)
-export type DeckLabels = { yes: string; no: string; stampYes: string; stampNo: string; eyebrow: string };
-const DUEL_LABELS: DeckLabels = { yes: "Passt zu mir", no: "Passt nicht", stampYes: "PASST", stampNo: "PASST NICHT", eyebrow: "Testvorschlag" };
+export type DeckLabels = { yes: string; mid: string; no: string; stampYes: string; stampMid: string; stampNo: string; eyebrow: string };
+const DUEL_LABELS: DeckLabels = {
+  yes: "Würde ich schauen", mid: "Okay", no: "Passt gar nicht",
+  stampYes: "SCHAUE ICH", stampMid: "OKAY", stampNo: "PASST NICHT", eyebrow: "Testvorschlag",
+};
 
 export default function DuelDeck({ cards, onFinished, onAnswer = duelAnswer, labels = DUEL_LABELS }: {
   cards: DuelCard[]; onFinished?: () => void;
   onAnswer?: (titleId: number, a: Answer | null) => Promise<void>; labels?: DeckLabels;
 }) {
-  const STAMP: Record<Answer, string> = { passt: labels.stampYes, passt_nicht: labels.stampNo, gesehen: "GESEHEN" };
+  const STAMP: Record<Answer, string> = { passt: labels.stampYes, okay: labels.stampMid, passt_nicht: labels.stampNo, gesehen: "GESEHEN" };
   const router = useRouter();
   const [index, setIndex] = useState(0);
   const [history, setHistory] = useState<DuelCard[]>([]);
@@ -85,11 +89,11 @@ export default function DuelDeck({ cards, onFinished, onAnswer = duelAnswer, lab
           <div className="empty" style={{ paddingTop: 60 }}>Runde geschafft – die Auswertung steht unten.</div>
         )}
         {flying.map((f) => {
-          const dir = f.answer === "passt_nicht" ? -1 : 1;
+          const dir = f.answer === "passt_nicht" ? -1 : f.answer === "okay" ? 0 : 1;
           return (
             <div key={`fly-${f.card.id}`} className="swipe-card fly" aria-hidden
               style={{ zIndex: 20, ["--from-x" as string]: `${f.from}px`, ["--from-rot" as string]: `${f.from / 18}deg`, ["--to-x" as string]: `${dir * 700}px`, ["--to-rot" as string]: `${dir * 28}deg` }}>
-              <div className={`stamp ${dir === 1 ? "keep" : "remove"}`} style={{ opacity: 1 }}>{STAMP[f.answer]}</div>
+              <div className={`stamp ${dir === 1 ? "keep" : dir === 0 ? "okay" : "remove"}`} style={{ opacity: 1 }}>{STAMP[f.answer]}</div>
               <Face c={f.card} eyebrow={labels.eyebrow} />
             </div>
           );
@@ -99,8 +103,8 @@ export default function DuelDeck({ cards, onFinished, onAnswer = duelAnswer, lab
         <button className="act" onClick={() => answer("passt_nicht")} disabled={!current}>
           <span className="round remove" aria-hidden>✕</span>{labels.no}
         </button>
-        <button className="act" onClick={() => answer("gesehen")} disabled={!current}>
-          <span className="round seen" aria-hidden>✓</span>Schon gesehen
+        <button className="act" onClick={() => answer("okay")} disabled={!current}>
+          <span className="round seen" aria-hidden>○</span>{labels.mid}
         </button>
         <button className="act" onClick={() => answer("passt")} disabled={!current}>
           <span className="round keep" aria-hidden>♥</span>{labels.yes}
@@ -108,6 +112,8 @@ export default function DuelDeck({ cards, onFinished, onAnswer = duelAnswer, lab
       </div>
       <div style={{ textAlign: "center", marginTop: 6 }}>
         <button className="linkish" onClick={undo} disabled={history.length === 0}>↺ Rückgängig</button>
+        <span className="caption"> · </span>
+        <button className="linkish" onClick={() => answer("gesehen")} disabled={!current}>✓ Schon gesehen</button>
       </div>
       {error && <p className="error" style={{ textAlign: "center" }}>{error}</p>}
     </div>
