@@ -59,11 +59,11 @@ const KIND_WEIGHT: Record<FeatureKind, number> = {
 };
 
 // Zu allgemeine Begriffe zählen nicht (sagen nichts über den Geschmack)
-const GENERIC_SUBGENRES = new Set([
+export const GENERIC_SUBGENRES = new Set([
   "Filmdrama", "Actionfilm", "Abenteuerfilm", "Filmkomödie", "Kriminalfilm", "Thriller", "Horrorfilm",
   "Science-Fiction-Film", "Fantasyfilm", "spannender Film", "Monumentalfilm", "Liebesfilm", "Animationsfilm",
 ]);
-const NOISE_KEYWORDS = new Set([
+export const NOISE_KEYWORDS = new Set([
   "duringcreditsstinger", "aftercreditsstinger", "woman director", "sequel", "remake", "based on novel or book",
   "based on comic", "3d", "imax", "live action remake", "shot on imax", "independent film", "male protagonist",
 ]);
