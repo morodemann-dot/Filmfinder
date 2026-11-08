@@ -12,7 +12,7 @@ import {
   type RatedTitle, type Recommendation,
 } from "@/lib/recommend";
 import { MODES, MOODS, PERIODS, TIMES, matchesMood, matchesTime, type TimeKey } from "@/lib/moods";
-import { dayNumber, moreLike } from "@/lib/similar";
+import { dayNumber, moreLike, rotateLead, timeSlot } from "@/lib/similar";
 import { friendRated, neighborPicks, togetherFriends } from "@/lib/friends";
 import { formatRuntime, type Title } from "@/lib/types";
 
@@ -157,7 +157,9 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
   // 1) Der Stapel: die besten Vorschläge, abwechslungsreich
   const DECK = 25;
   const diverse = pickDiverse(recs, DECK + 12);
-  const picks: Pick[] = diverse.slice(0, DECK).map((r) => ({
+  // Alle 4 Stunden beginnt der Stapel mit einem anderen der 10 besten Vorschläge
+  const slot = timeSlot(4);
+  const picks: Pick[] = rotateLead(diverse.slice(0, DECK), slot, user!.id).map((r) => ({
     id: r.title.id,
     title: r.title.title,
     poster_path: r.title.poster_path,
@@ -243,7 +245,7 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
     const [pos, neg] = ASPECT_LABELS[k] ?? [k, k];
     return [...(c.pos && pos !== "–" ? [{ label: `Wichtig: ${pos}`, n: c.pos }] : []), ...(c.neg && neg !== "–" ? [{ label: `Stört: ${neg}`, n: c.neg }] : [])];
   }).sort((a, b) => b.n - a.n).slice(0, 8);
-  const deckKey = JSON.stringify([sp.stimmung, sp.genre, sp.zeit, sp.zeitraum, sp.modus, sp.mit]);
+  const deckKey = JSON.stringify([sp.stimmung, sp.genre, sp.zeit, sp.zeitraum, sp.modus, sp.mit, slot]);
 
   return (
     <>

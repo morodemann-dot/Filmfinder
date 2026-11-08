@@ -42,7 +42,7 @@ const GENERIC = new Set(["Filmdrama", "Actionfilm", "Abenteuerfilm", "Filmkomöd
   "Science-Fiction-Film", "Fantasyfilm", "spannender Film", "Monumentalfilm", "Liebesfilm", "Animationsfilm"]);
 
 // Häufige TMDB-Stichworte (englisch) → verständliches Deutsch
-const KW_DE: Record<string, string> = {
+export const KW_DE: Record<string, string> = {
   "twist ending": "die Wendung am Ende", "plot twist": "die Wendungen", "surprise ending": "das überraschende Ende",
   "time travel": "Zeitreise", "time loop": "Zeitschleife", heist: "der Coup", "serial killer": "Serienkiller-Jagd",
   "based on true story": "wahre Geschichte", "based on a true story": "wahre Geschichte", dystopia: "Dystopie",
