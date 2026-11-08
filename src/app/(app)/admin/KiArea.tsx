@@ -110,7 +110,7 @@ export function KiView({ statusRated, statusTest, cmp = null, duel, cards, retro
         <div className="eyebrow" style={{ marginBottom: 4 }}>3 · Modell-Duell (blind)</div>
         <p className="caption" style={{ marginTop: 0 }}>
           Drei Varianten wählen ihre besten Vorschläge aus dem ganzen Katalog – wie der echte Filmfinder (ab 1980, nichts schon Eingeordnetes,
-          keine weiteren Teile bekannter Reihen): die neue App (alle Verbesserungen), die alte App und „alle Verbesserungen ohne Ähnlichkeit“. Ganz ohne KI.
+          keine weiteren Teile bekannter Reihen): {DUEL_SOURCES.map((x) => `„${x.name}“`).join(", ")}. Ganz ohne KI.
           Weitere Filme derselben Reihe oder Regie sind erlaubt, bekommen aber einen kleinen Abzug – so bleibt es abwechslungsreich.
           Du siehst nicht, welcher Vorschlag von wem kommt, und sagst: würde ich wirklich schauen, okay – oder passt gar nicht.
           Deine Antworten fließen <strong>auch</strong> in dein Geschmacksprofil ein – jede Runde macht die Vorschläge im Filmfinder besser.
