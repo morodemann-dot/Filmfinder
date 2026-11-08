@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { findBridges } from "@/lib/bridges";
 import Poster from "@/components/Poster";
 import { MIN_RATINGS } from "@/lib/onboarding";
 import PickDeck, { type Pick } from "@/components/PickDeck";
@@ -43,6 +45,16 @@ function Row({ title, sub, items }: { title: string; sub?: string; items: { t: T
       </div>
       <div className="row-scroll">{items.map(({ t, caption }) => <Tile key={t.id} t={t} caption={caption} />)}</div>
     </section>
+  );
+}
+
+// Lädt nachträglich (das Filmnetz braucht beim ersten Mal ein paar Sekunden) – der Stapel ist sofort da
+async function BridgeRow({ catalog, rated, allowed, taste }: { catalog: Title[]; rated: RatedTitle[]; allowed: Set<number>; taste: Map<number, number> }) {
+  await new Promise((ok) => setTimeout(ok, 0)); // erst den Rest der Seite schicken, dann rechnen
+  const bridges = findBridges(catalog, rated, allowed, taste);
+  return (
+    <Row title="Verbindet deine Lieblingsfilme" sub="liegt im Filmnetz zwischen Filmen, die du liebst"
+      items={bridges.map((b) => ({ t: b.t, caption: `„${b.a.title}“ + „${b.b.title}“${b.more ? ` +${b.more}` : ""}` }))} />
   );
 }
 
@@ -307,6 +319,12 @@ export default async function FilmfinderPage({ searchParams }: { searchParams: P
         )}
       </div>
 
+      {!seeds.length && (
+        <Suspense fallback={null}>
+          <BridgeRow catalog={catalog} rated={rated} allowed={new Set(candidates.filter((t) => !inDeck.has(t.id)).map((t) => t.id))}
+            taste={new Map(recs.map((r, i) => [r.title.id, 1 - i / Math.max(1, recs.length - 1)]))} />
+        </Suspense>
+      )}
       {becauseRows.map(({ anchor, items }) => (
         <Row key={anchor.id} title={`Weil du „${anchor.title}“ ${anchor.favorite ? "liebst" : "mochtest"}`}
           sub={anchor.favorite ? "♥ Lieblingsfilm" : `${anchor.rating}/10`} items={items} />
