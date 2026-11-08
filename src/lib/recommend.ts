@@ -12,6 +12,7 @@
 import type { Title } from "./types";
 import { aspectStrength } from "./aspects";
 import { AI_SCALES, type AiScale } from "./aiFeatures";
+import { netNeighbors } from "./filmNet";
 
 // reason: Grund bei "Kein Interesse"; aspects: was gefallen/gestört hat ("+regie:Nolan", "-aspekt:langatmig")
 // 7) Antworten aus dem Modell-Duell als zusätzliche Einträge (nur fürs Profil, nicht als "gesehen")
@@ -100,6 +101,7 @@ export type ScoreOptions = {
   originWeight?: number; // 4) Herkunftsland, Originalsprache, Studio als Merkmal
   genreQuality?: boolean; // 5) Qualität im Vergleich zum Genre (Horror mit 7,0 ist stark)
   genrePairWeight?: number; // 6) Genre-Kombinationen (Sci-Fi + Drama ≠ Sci-Fi + Action)
+  netWeight?: number; // 11) Filmnetz: Nähe zu deinen Filmen im Merkmals-Netz (0 = aus)
   negWeight?: number; // 10) Schlechte Bewertungen, "Kein Interesse" und "passt nicht" stärker zählen (1 = wie bisher)
   recWeight?: number; // 9) TMDB-Empfehlungen: "Wer X mochte, mochte auch Y" (0 = aus)
   swipeWeight?: number; // 8) Merkliste / "Kein Interesse" stärker zählen (1 = wie bisher)
@@ -389,6 +391,23 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
     anchorsNeg = rated.filter((r) => r.status === "gesehen" && r.rating != null && r.rating <= 4).slice(0, 80).map((r) => simVector(r));
   }
 
+  // 11) Filmnetz: Welche Filme liegen im Merkmals-Netz direkt neben Filmen, die du magst (oder nicht magst)?
+  const netNear = new Map<number, { sum: number; best: { t: Title; c: number } | null }>();
+  if (opts.netWeight && catalog) {
+    const nb = netNeighbors(catalog);
+    for (const r of rated) {
+      const w = recSignal(r, opts.negWeight ?? 1);
+      if (!w) continue;
+      for (const n of nb.get(r.id) ?? []) {
+        const c = w * n.s * 3; // Ähnlichkeit 0,1–0,5 → Beitrag 0,3–1,5 je Film
+        const x = netNear.get(n.id) ?? { sum: 0, best: null };
+        x.sum += c;
+        if (c > 0 && (!x.best || c > x.best.c)) x.best = { t: r, c };
+        netNear.set(n.id, x);
+      }
+    }
+  }
+
   // 9) TMDB-Empfehlungen: Was empfiehlt TMDB zu Filmen, die du magst (oder nicht magst)?
   const recFwd = new Map<number, { sum: number; best: { t: Title; c: number } | null }>();
   const recUser = new Map<number, number>();
@@ -425,7 +444,7 @@ export function buildProfile(rated: RatedTitle[], opts: ScoreOptions = {}, catal
   }
   const posIndex = buildSimIndex(anchorsPos.map((a) => a.v));
   const negIndex = buildSimIndex(anchorsNeg);
-  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, posIndex, negIndex, genreQ, recFwd, recUser, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
+  return { prefs, interest, aspectCounts, anchorsPos, anchorsNeg, posIndex, negIndex, genreQ, recFwd, recUser, netNear, ratedCount: withRating.length, meanScore: mean, qMean, qualitySlope: slope };
 }
 
 const KIND_LABEL: Record<FeatureKind, string> = {
@@ -640,6 +659,15 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
       for (const x of similarities(v, profile.negIndex)) neg = Math.max(neg, x);
       score += sw * ((similarTo?.s ?? 0) - 0.6 * (opts.negWeight ?? 1) * neg);
     }
+    // 11) Filmnetz
+    let netFrom: { t: Title; c: number } | null = null;
+    if (opts.netWeight && profile.netNear?.size) {
+      const x = profile.netNear.get(t.id);
+      if (x) {
+        score += opts.netWeight * Math.sign(x.sum) * Math.log1p(Math.abs(x.sum));
+        netFrom = x.best;
+      }
+    }
     // 9) TMDB-Empfehlungen: in beide Richtungen (dein Film empfiehlt diesen / dieser empfiehlt deinen)
     let recFrom: { t: Title; c: number } | null = null;
     const rw = opts.recWeight ?? 0;
@@ -661,6 +689,8 @@ export function recommend(candidates: Title[], profile: Profile, opts: ScoreOpti
     if (topInterest && reasons.length < 3) reasons.unshift(interestText(topInterest));
     if (similarTo && similarTo.s >= 0.35 && reasons.length < 3)
       reasons.unshift(`Ähnlich wie „${similarTo.t.title}“${similarTo.fav ? " – einer deiner Lieblingsfilme" : ""}`);
+    if (netFrom && netFrom.c >= 0.6 && reasons.length < 3 && !(similarTo && similarTo.t.id === netFrom.t.id && similarTo.s >= 0.35))
+      reasons.unshift(`Im Filmnetz nah an „${netFrom.t.title}“`);
     if (recFrom && recFrom.c >= 1 && reasons.length < 3 && !(similarTo && similarTo.t.id === recFrom.t.id && similarTo.s >= 0.35))
       reasons.unshift(`Wer „${recFrom.t.title}“ mochte, mochte auch diesen`);
     if (q != null && q >= 0.8 && qw >= 0.3 && reasons.length < 3)

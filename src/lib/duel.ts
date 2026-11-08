@@ -60,6 +60,11 @@ export const ALL_SOURCES: SourceDef[] = [
   { key: "n07", name: "+ 10 Negatives schwächer (×0,7)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, negWeight: 0.7 } },
   { key: "n05", name: "+ 10 Negatives schwächer (×0,5)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, negWeight: 0.5 } },
   { key: "n3", name: "+ 10 Negatives ×3", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, negWeight: 3 } },
+  // 11) Filmnetz: Nähe zu deinen Filmen im Merkmals-Netz – zusätzlich zur neuesten App
+  { key: "net1", name: "+ 11 Filmnetz (leicht)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, netWeight: 0.15 } },
+  { key: "net2", name: "+ 11 Filmnetz", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, netWeight: 0.3 } },
+  { key: "net3", name: "+ 11 Filmnetz (stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, netWeight: 0.6 } },
+  { key: "net2s", name: "+ 11 Filmnetz statt alter Ähnlichkeit", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, swipeWeight: 2, recWeight: 0.15, netWeight: 0.3, similarityWeight: 0 } },
   { key: "r4", name: "+ 9 TMDB-Empfehlungen (sehr stark)", ...APP, extra: { ...ALL_EXTRAS, duelWeight: 4, recWeight: 1.2 } },
 ];
 const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
@@ -74,10 +79,11 @@ const byKey = (k: string) => ALL_SOURCES.find((s) => s.key === k)!;
 // Ab Nov. 2026 (Runde mit Duell-Lernen): App mit Duell-Antworten vs. vorherige App vs. alte App
 // 5 Runden (je 50 Karten): Neueste 73 %, ×0,7 66 %, Vorherige 64 % → ×0,7 nicht übernommen
 // Ab 7. Nov. spät: 1–6 lag live klar hinten (50 %) → ersetzt durch "Negatives schwächer ×0,7" (nachträglich gleichauf, 79 %)
-export const DUEL_SOURCES: SourceDef[] = [byKey("kombi"), byKey("d4"), byKey("n07")];
+// Ab 8. Nov.: Filmnetz live testen (statt ×0,7, das live verloren hat)
+export const DUEL_SOURCES: SourceDef[] = [byKey("kombi"), byKey("net2"), byKey("d4")];
 // Was wird im nachträglichen Test auf deinen Antworten verglichen?
 // Nov. 2026: Negatives stärker schadet (×1,5 78 %, ×2 75 %, ×3 68 % gegenüber 79 %) → jetzt: schwächer?
-export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "d4", "kombi", "n15", "n07", "n05"].map(byKey);
+export const EVAL_SOURCES: SourceDef[] = ["ohne", "i1_q05", "vall", "kombi", "net1", "net2", "net3", "net2s"].map(byKey);
 export const DUEL_MODELS = [...new Set(DUEL_SOURCES.flatMap((s) => (s.model ? [s.model] : [])))];
 export const sourceName = (k: string) => ALL_SOURCES.find((s) => s.key === k)?.name ?? k;
 

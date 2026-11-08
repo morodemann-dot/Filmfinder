@@ -256,3 +256,19 @@ export function sharedFeatures(net: Net, a: number, b: number, max = 5): string[
       return ra && rb ? la : ra ? `≈ ${lb}` : rb ? `≈ ${la}` : la; // ≈ = verwandtes Thema
     });
 }
+
+// Für die Vorschläge: Nachbarn je Film-ID (mit Ähnlichkeit), aus dem zwischengespeicherten Netz
+const nbCache = new WeakMap<Net, Map<number, { id: number; s: number }[]>>();
+export function netNeighbors(catalog: Title[]): Map<number, { id: number; s: number }[]> {
+  const net = buildNet(catalog);
+  const hit = nbCache.get(net);
+  if (hit) return hit;
+  const m = new Map<number, { id: number; s: number }[]>();
+  const push = (a: number, b: number, s: number) => { const l = m.get(a); if (l) l.push({ id: b, s }); else m.set(a, [{ id: b, s }]); };
+  for (let k = 0; k < net.edges.length; k += 3) {
+    const a = net.nodes[net.edges[k]].id, b = net.nodes[net.edges[k + 1]].id, s = net.edges[k + 2] / 1000;
+    push(a, b, s); push(b, a, s);
+  }
+  nbCache.set(net, m);
+  return m;
+}
